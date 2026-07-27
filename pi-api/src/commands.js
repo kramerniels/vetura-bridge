@@ -4,23 +4,17 @@ const { z } = require("zod");
 const SCRIPTS_DIR = path.join(__dirname, "..", "scripts");
 
 const commandSchemas = {
-  setTemperature: z
+  printLabel: z
     .object({
-      room: z.string().min(1).max(64),
-      value: z.number().min(10).max(35),
-    })
-    .strict(),
-  toggleLight: z
-    .object({
-      room: z.string().min(1).max(64),
-      state: z.enum(["on", "off"]),
+      zpl: z.string().min(1).max(500_000),
+      ip: z.string().ip(),
+      port: z.coerce.number().int().min(1).max(65535),
     })
     .strict(),
 };
 
 const commandScripts = {
-  setTemperature: path.join(SCRIPTS_DIR, "set-temperature.js"),
-  toggleLight: path.join(SCRIPTS_DIR, "toggle-light.js"),
+  printLabel: path.join(SCRIPTS_DIR, "print-label.js"),
 };
 
 const requestSchema = z

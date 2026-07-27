@@ -1,19 +1,19 @@
 {
   "name": "pi-api",
-  "version": "1.0.0",
-  "description": "Secure Express API for triggering whitelisted Node scripts on Raspberry Pi",
-  "main": "src/server.js",
+  "version": "2.0.0",
+  "description": "NATS JetStream consumer for triggering whitelisted Node scripts on Raspberry Pi",
+  "main": "src/nats-consumer.js",
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "node --watch src/server.js"
+    "start": "node src/nats-consumer.js",
+    "setup:jetstream": "node scripts/setup-jetstream.js",
+    "dev": "node --watch src/nats-consumer.js"
   },
   "engines": {
     "node": ">=18"
   },
   "dependencies": {
     "dotenv": "^16.4.7",
-    "express": "^4.21.2",
-    "express-rate-limit": "^7.5.0",
+    "nats": "^2.29.3",
     "zod": "^3.24.2"
   }
 }

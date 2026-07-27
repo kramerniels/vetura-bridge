@@ -26,7 +26,12 @@ if [[ ! -f "${APP_DIR}/.env" ]]; then
   cp "${APP_DIR}/.env.example" "${APP_DIR}/.env"
   chmod 600 "${APP_DIR}/.env"
   chown "${SERVICE_USER}:${SERVICE_GROUP}" "${APP_DIR}/.env"
-  echo "Created ${APP_DIR}/.env — set API_SECRET before starting the service."
+  echo "Created ${APP_DIR}/.env — set NATS_URL and NATS_CREDS_FILE before starting the service."
+fi
+
+if [[ -f "${APP_DIR}/credentials.creds" ]]; then
+  chmod 600 "${APP_DIR}/credentials.creds"
+  chown "${SERVICE_USER}:${SERVICE_GROUP}" "${APP_DIR}/credentials.creds"
 fi
 
 cd "${APP_DIR}"
@@ -36,4 +41,4 @@ cp "${APP_DIR}/deploy/pi-api.service" /etc/systemd/system/pi-api.service
 systemctl daemon-reload
 systemctl enable pi-api
 
-echo "Installed pi-api. Edit ${APP_DIR}/.env, then run: systemctl start pi-api"
+echo "Installed pi-api. Copy credentials.creds, edit ${APP_DIR}/.env, run npm run setup:jetstream, then: systemctl start pi-api"

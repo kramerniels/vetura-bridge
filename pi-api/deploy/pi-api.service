@@ -8,7 +8,7 @@ User=pi-api
 Group=pi-api
 WorkingDirectory=/opt/pi-api
 EnvironmentFile=/opt/pi-api/.env
-ExecStart=/usr/bin/node /opt/pi-api/src/server.js
+ExecStart=/usr/bin/node /opt/pi-api/src/nats-consumer.js
 Restart=on-failure
 RestartSec=5
 
