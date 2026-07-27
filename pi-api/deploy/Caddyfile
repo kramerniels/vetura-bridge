@@ -1,0 +1,11 @@
+# Replace pi.example.com with your domain pointing to this Pi (or Cloudflare Tunnel hostname).
+pi.example.com {
+	reverse_proxy 127.0.0.1:3000
+
+	# Optional: restrict to a single caller IP when not using Cloudflare Tunnel.
+	# @allowed remote_ip 203.0.113.10 198.51.100.5
+	# handle @allowed {
+	# 	reverse_proxy 127.0.0.1:3000
+	# }
+	# respond "Forbidden" 403
+}

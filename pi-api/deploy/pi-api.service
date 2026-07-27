@@ -1,0 +1,22 @@
+[Unit]
+Description=Pi API - secure command runner
+After=network.target
+
+[Service]
+Type=simple
+User=pi-api
+Group=pi-api
+WorkingDirectory=/opt/pi-api
+EnvironmentFile=/opt/pi-api/.env
+ExecStart=/usr/bin/node /opt/pi-api/src/server.js
+Restart=on-failure
+RestartSec=5
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/pi-api
+
+[Install]
+WantedBy=multi-user.target
