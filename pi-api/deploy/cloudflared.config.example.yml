@@ -1,7 +1,0 @@
-tunnel: REPLACE_WITH_TUNNEL_UUID
-credentials-file: /root/.cloudflared/REPLACE_WITH_TUNNEL_UUID.json
-
-ingress:
-  - hostname: pi.example.com
-    service: http://127.0.0.1:3000
-  - service: http_status:404
