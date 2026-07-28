@@ -38,16 +38,18 @@ function sendZpl(ip, port, zpl) {
 }
 
 async function main() {
-  const { zpl, ip, port } = await readStdin();
+  const { zpl, ip, port, copies = 1 } = await readStdin();
+  const payload = copies > 1 ? zpl.repeat(copies) : zpl;
 
-  await sendZpl(ip, port, zpl);
+  await sendZpl(ip, port, payload);
 
   process.stdout.write(
     JSON.stringify({
       ip,
       port,
+      copies,
       printed: true,
-      bytesSent: Buffer.byteLength(zpl, "utf8"),
+      bytesSent: Buffer.byteLength(payload, "utf8"),
     })
   );
 }

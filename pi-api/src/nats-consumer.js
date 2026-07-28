@@ -5,6 +5,8 @@ const {
   RetentionPolicy,
 } = require("nats");
 const { connectNats } = require("./nats-client");
+const { isTransientError, buildErrorPayload } = require("./errors");
+const { commandFromSubject } = require("./commands");
 
 const codec = JSONCodec();
 
@@ -49,20 +51,21 @@ async function publishError(nc, config, payload) {
   await nc.flush();
 }
 
-async function processCommand(nc, config, body) {
+async function processCommand(nc, config, body, subject) {
   const { validateRequest } = require("./commands");
   const { runScript } = require("./runner");
-  const { isTransientError, buildErrorPayload } = require("./errors");
 
-  const validation = validateRequest(body);
+  const command = commandFromSubject(subject || config.subject);
+  const validation = validateRequest(body, command);
   if (!validation.ok) {
     const error = new Error("Validation failed");
     error.validation = validation.error;
+    error.command = command;
     error.permanent = true;
     throw error;
   }
 
-  const { command, data, scriptPath } = validation;
+  const { data, scriptPath } = validation;
   await runScript(scriptPath, data);
   return command;
 }
@@ -94,11 +97,12 @@ async function startConsumer() {
       body = codec.decode(msg.data);
       logEvent("message_received", { messageId, subject: msg.subject, body });
 
-      const command = await processCommand(nc, config, body);
+      const command = await processCommand(nc, config, body, msg.subject);
       msg.ack();
       logEvent("message_success", { messageId, command });
     } catch (err) {
-      const command = body?.command || "unknown";
+      const command =
+        err.command || commandFromSubject(msg.subject) || "unknown";
       const permanent = err.permanent || !isTransientError(err);
       const errorMessage =
         err.validation != null
