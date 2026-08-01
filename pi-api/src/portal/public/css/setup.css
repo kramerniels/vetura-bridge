@@ -1,0 +1,142 @@
+:root {
+    --bg: #0f1c17;
+    --fg: #e8f0ea;
+    --muted: #9bb0a3;
+    --accent: #d4a017;
+    --warn: #e07050;
+    --ok: #6fbf8a;
+    --line: rgba(232, 240, 234, 0.14);
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+    color: var(--fg);
+    background: radial-gradient(
+            ellipse 80% 60% at 20% 0%,
+            rgba(212, 160, 23, 0.18),
+            transparent 55%
+        ),
+        radial-gradient(
+            ellipse 70% 50% at 100% 100%,
+            rgba(70, 120, 90, 0.25),
+            transparent 50%
+        ),
+        var(--bg);
+}
+
+main {
+    max-width: 34rem;
+    margin: 0 auto;
+    padding: 2.5rem 1.25rem 3rem;
+}
+
+.brand {
+    font-family: "IBM Plex Serif", Georgia, serif;
+    font-size: clamp(2rem, 6vw, 2.75rem);
+    letter-spacing: 0.02em;
+    margin: 0 0 0.35rem;
+}
+
+.meta,
+.lede,
+.hint,
+.wait,
+.url {
+    color: var(--muted);
+    line-height: 1.45;
+}
+
+.meta {
+    font-size: 0.95rem;
+    margin: 0 0 1.75rem;
+}
+
+.meta code {
+    color: var(--fg);
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.9em;
+}
+
+.primary {
+    margin-bottom: 2rem;
+}
+
+.qr {
+    display: block;
+    margin: 1.25rem 0;
+    background: #fff;
+    padding: 0.75rem;
+    border-radius: 0.35rem;
+}
+
+.status.ok {
+    color: var(--ok);
+    font-size: 1.15rem;
+}
+
+.warn {
+    color: var(--warn);
+}
+
+.url {
+    word-break: break-all;
+    font-size: 0.85rem;
+}
+
+.url a {
+    color: var(--accent);
+}
+
+.manual {
+    border-top: 1px solid var(--line);
+    padding-top: 1rem;
+}
+
+summary {
+    cursor: pointer;
+    color: var(--muted);
+    margin-bottom: 0.75rem;
+}
+
+label {
+    display: block;
+    margin: 0.75rem 0;
+    font-size: 0.9rem;
+    color: var(--muted);
+}
+
+input,
+textarea {
+    display: block;
+    width: 100%;
+    margin-top: 0.35rem;
+    padding: 0.65rem 0.7rem;
+    border: 1px solid var(--line);
+    border-radius: 0.3rem;
+    background: rgba(0, 0, 0, 0.25);
+    color: var(--fg);
+    font: inherit;
+}
+
+textarea {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.8rem;
+}
+
+button {
+    margin-top: 1rem;
+    border: 0;
+    border-radius: 0.3rem;
+    padding: 0.75rem 1.1rem;
+    background: var(--accent);
+    color: #1a1405;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}

@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="nl">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>DKGM Pi setup</title>
+        <link rel="stylesheet" href="/css/setup.css" />
+    </head>
+    <body>
+        <main>
+            <h1 class="brand">DKGM</h1>
+            <p class="meta">
+                Apparaat <code>{{deviceId}}</code><br />
+                {{#mdnsHost}}Adres <code>{{mdnsHost}}</code>{{/mdnsHost}}{{^mdnsHost}}LAN{{/mdnsHost}}{{#addresses}}
+                · {{addresses}}{{/addresses}}
+            </p>
+            <section class="primary">
+                <p class="lede">
+                    Scan de QR-code met je telefoon om dit apparaat te koppelen
+                    aan de online omgeving.
+                </p>
+                {{#qrDataUrl}}
+                <img
+                    class="qr"
+                    src="{{qrDataUrl}}"
+                    alt="Koppelings-QR-code"
+                    width="240"
+                    height="240"
+                />
+                {{/qrDataUrl}}
+                {{^qrDataUrl}}
+                <p class="warn">
+                    QR niet beschikbaar{{#cloudError}}: {{cloudError}}{{/cloudError}}{{^cloudError}}.{{/cloudError}}
+                </p>
+                {{/qrDataUrl}}
+                {{#pairUrl}}
+                <p class="url"><a href="{{pairUrl}}">{{pairUrl}}</a></p>
+                {{/pairUrl}}
+                <p class="wait" id="wait">Wacht op koppeling…</p>
+                {{#cloudError}}
+                <p class="warn">{{cloudError}}</p>
+                {{/cloudError}}
+            </section>
+            <details class="manual">
+                <summary>Handmatige setup (tijdelijk)</summary>
+                <p class="hint">
+                    Alleen gebruiken als QR-koppeling nog niet werkt. Plak hier
+                    de Scaleway NATS-credentials, geen accountwachtwoord.
+                </p>
+                <form id="manual-setup">
+                    <label
+                        >NATS credentials (.creds)
+                        <textarea
+                            name="creds"
+                            rows="10"
+                            required
+                            placeholder="-----BEGIN NATS USER JWT-----&#10;..."
+                        >{{creds}}</textarea>
+                    </label>
+                    <label
+                        >NATS_URL
+                        <input name="natsUrl" value="{{natsUrl}}" required />
+                    </label>
+                    <label
+                        >NATS_STREAM
+                        <input name="stream" value="{{stream}}" />
+                    </label>
+                    <label
+                        >NATS_SUBJECT
+                        <input name="subject" value="{{subject}}" required />
+                    </label>
+                    <label
+                        >NATS_ERROR_SUBJECT
+                        <input
+                            name="errorSubject"
+                            value="{{errorSubject}}"
+                            required
+                        />
+                    </label>
+                    <label
+                        >NATS_CONSUMER
+                        <input name="consumer" value="{{consumer}}" required />
+                    </label>
+                    <label
+                        >NATS_MAX_AGE_SEC
+                        <input name="maxAgeSec" value="{{maxAgeSec}}" />
+                    </label>
+                    <p class="warn" id="form-error" hidden></p>
+                    <button type="submit">Opslaan en starten</button>
+                </form>
+            </details>
+        </main>
+        <script src="/js/setup.js"></script>
+    </body>
+</html>

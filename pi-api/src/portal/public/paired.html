@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="nl">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>DKGM Pi status</title>
+        <link rel="stylesheet" href="/css/setup.css" />
+    </head>
+    <body>
+        <main>
+            <h1 class="brand">DKGM</h1>
+            <p class="meta">
+                Apparaat <code>{{deviceId}}</code><br />
+                {{#mdnsHost}}Adres <code>{{mdnsHost}}</code>{{/mdnsHost}}{{^mdnsHost}}LAN{{/mdnsHost}}{{#addresses}}
+                · {{addresses}}{{/addresses}}
+            </p>
+            <section class="primary">
+                <p class="status ok">Gekoppeld</p>
+                <p class="lede">
+                    Dit apparaat ontvangt opdrachten via NATS.
+                </p>
+                <p class="meta">
+                    Consumer <code>{{consumer}}</code><br />
+                    Subject <code>{{subject}}</code><br />
+                    Errors <code>{{errorSubject}}</code>
+                </p>
+            </section>
+        </main>
+    </body>
+</html>
