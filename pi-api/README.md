@@ -1,8 +1,12 @@
 # LAN portal (pi-api setup)
 
 The portal is the local web UI on the Pi. It always runs (`pi-api`) and
-switches between setup (unpaired) and status (paired). Cloud pairing follows the
-contract in [pairing-api.md](./pairing-api.md).
+switches between setup (unpaired) and status (paired).
+
+| Doc | Audience |
+|-----|----------|
+| [pairing-api.md](./pairing-api.md) | Cloud pairing contract (register / pair / bootstrap) |
+| [commands.md](./commands.md) | NATS subjects, command payloads, heartbeat, helpers |
 
 Entry point: `src/portal/index.js` (`npm start`).
 
@@ -55,7 +59,7 @@ src/portal/
 ## HTTP API
 
 | Method | Path | Purpose |
-|--------|------|---------|
+|--------|-------|---------|
 | `GET` | `/` | Setup or paired page (depends on state) |
 | `GET` | `/api/status` | JSON: state, deviceId, shortId, addresses, cloud, pairUrl, worker |
 | `POST` | `/api/manual-setup` | Temporary fallback: Scaleway `.creds` + NATS fields |
@@ -170,12 +174,12 @@ portal stops, the worker stops with it (and comes back when systemd restarts the
 portal).
 
 The recipe for that service lives in
-[`deploy/pi-api.service`](../deploy/pi-api.service)
+[`deploy/pi-api.service`](./deploy/pi-api.service)
 (`ExecStart` points at `src/portal/index.js`).
 
 Before the portal starts, `ExecStartPre=+/opt/pi-api/deploy/sync-helpers.sh`
 (as root) installs maintenance helpers, sudoers, and refreshes this unit from
-the package tree. See [pairing-api.md — Maintenance helpers](./pairing-api.md#maintenance-helpers)
+the package tree. See [commands.md — Maintenance helpers](./commands.md#maintenance-helpers)
 and the `update` command for OTA app updates.
 
 ### Local development
@@ -185,4 +189,5 @@ starts the worker child itself.
 
 ## Related
 
-- Cloud contract, status models, factory reset: [pairing-api.md](./pairing-api.md)
+- Cloud pairing contract: [pairing-api.md](./pairing-api.md)
+- NATS commands, heartbeat, helpers: [commands.md](./commands.md)
