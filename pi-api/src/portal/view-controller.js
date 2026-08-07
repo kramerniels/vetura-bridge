@@ -59,6 +59,7 @@ async function renderSetupPage(ctx) {
         stream: defaults.stream || "commands",
         subject: defaults.subject || "",
         errorSubject: defaults.errorSubject || "",
+        resultSubject: defaults.resultSubject || "",
         consumer: defaults.consumer || "",
         maxAgeSec: String(defaults.maxAgeSec || "900"),
     });
@@ -72,6 +73,7 @@ function renderPairedPage() {
         consumer: subjects.consumer,
         subject: subjects.subject,
         errorSubject: subjects.errorSubject,
+        resultSubject: subjects.resultSubject,
     });
 }
 

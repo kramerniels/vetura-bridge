@@ -30,6 +30,7 @@ function buildEnvContents(config) {
         `NATS_STREAM=${escapeEnvValue(config.stream || DEFAULTS.NATS_STREAM)}`,
         `NATS_SUBJECT=${escapeEnvValue(config.subject)}`,
         `NATS_ERROR_SUBJECT=${escapeEnvValue(config.errorSubject)}`,
+        `NATS_RESULT_SUBJECT=${escapeEnvValue(config.resultSubject)}`,
         `NATS_CONSUMER=${escapeEnvValue(config.consumer)}`,
         `NATS_MAX_AGE_SEC=${escapeEnvValue(
             config.maxAgeSec != null
@@ -56,6 +57,9 @@ function validateConfig(input) {
     const errorSubject = String(input.errorSubject || "").trim();
     if (!errorSubject) errors.push("NATS_ERROR_SUBJECT is required");
 
+    const resultSubject = String(input.resultSubject || "").trim();
+    if (!resultSubject) errors.push("NATS_RESULT_SUBJECT is required");
+
     const consumer = String(input.consumer || "").trim();
     if (!consumer) errors.push("NATS_CONSUMER is required");
 
@@ -70,6 +74,7 @@ function validateConfig(input) {
             stream: String(input.stream || DEFAULTS.NATS_STREAM).trim(),
             subject,
             errorSubject,
+            resultSubject,
             consumer,
             maxAgeSec:
                 input.maxAgeSec != null && String(input.maxAgeSec).trim() !== ""
@@ -88,6 +93,7 @@ function configFromBootstrap(payload, deviceId) {
         stream: payload.stream || names.stream,
         subject: payload.subject || names.subject,
         errorSubject: payload.errorSubject || names.errorSubject,
+        resultSubject: payload.resultSubject || names.resultSubject,
         consumer: payload.consumer || names.consumer,
         maxAgeSec: payload.maxAgeSec,
         credsFileContents: payload.credsFileContents,
@@ -101,6 +107,7 @@ function configFromDeviceDefaults(deviceId) {
         stream: names.stream,
         subject: names.subject,
         errorSubject: names.errorSubject,
+        resultSubject: names.resultSubject,
         consumer: names.consumer,
         maxAgeSec: DEFAULTS.NATS_MAX_AGE_SEC,
     };
@@ -134,6 +141,7 @@ function applyPairing(input) {
             stream: validated.config.stream,
             subject: validated.config.subject,
             errorSubject: validated.config.errorSubject,
+            resultSubject: validated.config.resultSubject,
             consumer: validated.config.consumer,
             credsFile: validated.config.credsFile,
         },

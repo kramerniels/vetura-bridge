@@ -118,6 +118,7 @@ module.exports = {
     STATE_UNPAIRED,
     STATE_PAIRED,
     STATE_FILE,
+    readIdentity,
     ensureIdentity,
     setState,
 };

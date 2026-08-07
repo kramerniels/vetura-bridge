@@ -5,7 +5,11 @@ const {
     RetentionPolicy,
 } = require("nats");
 const { connectNats } = require("./nats-client");
-const { isTransientError, buildErrorPayload } = require("./errors");
+const {
+    isTransientError,
+    buildErrorPayload,
+    buildResultPayload,
+} = require("./errors");
 const { commandFromSubject, validateRequest } = require("./commands");
 const { runScript } = require("./runner");
 
@@ -52,7 +56,11 @@ async function publishError(nc, config, payload) {
     await nc.flush();
 }
 
-// TODO check workings
+async function publishResult(nc, config, payload) {
+    nc.publish(config.resultSubject, codec.encode(payload));
+    await nc.flush();
+}
+
 async function processCommand(nc, config, body, subject) {
     const command = commandFromSubject(subject || config.subject);
     const validation = validateRequest(body, command);
@@ -65,8 +73,8 @@ async function processCommand(nc, config, body, subject) {
     }
 
     const { data, scriptPath, timeoutMs } = validation;
-    await runScript(scriptPath, data, { timeoutMs });
-    return command;
+    const result = await runScript(scriptPath, data, { timeoutMs });
+    return { command, result };
 }
 
 function logEvent(event, fields) {
@@ -102,7 +110,17 @@ async function startConsumer() {
                 body,
             });
 
-            const command = await processCommand(nc, config, body, msg.subject);
+            const { command, result } = await processCommand(
+                nc,
+                config,
+                body,
+                msg.subject,
+            );
+            await publishResult(
+                nc,
+                config,
+                buildResultPayload(command, messageId, result),
+            );
             msg.ack();
             logEvent("message_success", { messageId, command });
         } catch (err) {
@@ -143,4 +161,9 @@ async function startConsumer() {
     }
 }
 
-module.exports = { ensureJetStream, startConsumer, publishError };
+module.exports = {
+    ensureJetStream,
+    startConsumer,
+    publishError,
+    publishResult,
+};

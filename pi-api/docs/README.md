@@ -98,7 +98,8 @@ child process.
 ### `POST /api/manual-setup`
 
 Only allowed when state is not `paired`. Body (JSON): `creds`, `natsUrl`, and
-optionally `stream`, `subject`, `errorSubject`, `consumer`, `maxAgeSec`.
+optionally `stream`, `subject`, `errorSubject`, `resultSubject`, `consumer`,
+`maxAgeSec`.
 
 On success: same path as cloud bootstrap (`applyPairing` + start worker) →
 reload shows the status page.
@@ -131,6 +132,7 @@ Default NATS names come from `src/device-nats.js`:
 | stream | `commands` |
 | subject | `commands.<deviceId>.>` |
 | errorSubject | `errors.<deviceId>` |
+| resultSubject | `results.<deviceId>` |
 | consumer | `pi-<deviceId>` |
 
 ### Paths

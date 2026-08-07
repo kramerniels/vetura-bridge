@@ -4,6 +4,7 @@
  *
  * Commands:  commands.<deviceId>.<command>
  * Errors:    errors.<deviceId>   (one topic for all commands)
+ * Results:   results.<deviceId>  (one topic for all command successes)
  * Consumer:  filter commands.<deviceId>.>
  */
 
@@ -16,6 +17,7 @@ function subjectsForDevice(deviceId) {
         stream: "commands",
         subject: `commands.${id}.>`,
         errorSubject: `errors.${id}`,
+        resultSubject: `results.${id}`,
         consumer: `pi-${id}`,
     };
 }

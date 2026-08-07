@@ -16,4 +16,17 @@ function buildErrorPayload(command, messageId, error) {
     };
 }
 
-module.exports = { isTransientError, buildErrorPayload };
+function buildResultPayload(command, messageId, result) {
+    return {
+        command,
+        messageId,
+        result: result == null ? null : result,
+        timestamp: new Date().toISOString(),
+    };
+}
+
+module.exports = {
+    isTransientError,
+    buildErrorPayload,
+    buildResultPayload,
+};

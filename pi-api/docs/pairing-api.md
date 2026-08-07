@@ -222,15 +222,19 @@ from `deviceId` (and accepts optional overrides if present):
 | consumer filter / subject | `commands.<deviceId>.>` |
 | consumer | `pi-<deviceId>` |
 | error subject | `errors.<deviceId>` |
+| result subject | `results.<deviceId>` |
 
 ## Publishing commands (after pairing)
 
-Publish to JetStream subject `commands.<deviceId>.<command>`. Current command:
-`printLabel`.
+Publish to JetStream subject `commands.<deviceId>.<command>`. Commands:
+`printLabel`, `ping`.
 
 ```text
 commands.<deviceId>.printLabel
+commands.<deviceId>.ping
 ```
+
+### `printLabel`
 
 Payload (command is taken from the subject suffix; body is the command data):
 
@@ -246,12 +250,44 @@ Payload (command is taken from the subject suffix; body is the command data):
 }
 ```
 
+### `ping`
+
+Body must be an empty object:
+
+```json
+{}
+```
+
+On success the worker publishes system diagnostics (version, disk, memory, OS,
+network, device identity) inside the result envelope on `results.<deviceId>`.
+
+### Success and failure subjects
+
 Subscribe to permanent failures for the device on one shared subject:
 
 ```text
 errors.<deviceId>
 ```
 
+Subscribe to successful command results (JSON) on:
+
+```text
+results.<deviceId>
+```
+
+Result envelope:
+
+```json
+{
+  "command": "ping",
+  "messageId": "42",
+  "result": {},
+  "timestamp": "2026-08-07T16:00:00.000Z"
+}
+```
+
+`result` is the script stdout JSON (for `printLabel`: printer ack fields; for
+`ping`: system info). All successful commands publish here.
 ## Factory reset
 
 No dedicated reset script in the repo yet. On the device (as root), roughly:

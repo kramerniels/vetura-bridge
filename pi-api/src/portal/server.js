@@ -120,6 +120,7 @@ async function postManualSetup(res, req, ctx) {
         stream: form.stream,
         subject: form.subject,
         errorSubject: form.errorSubject,
+        resultSubject: form.resultSubject,
         consumer: form.consumer,
         maxAgeSec: form.maxAgeSec,
     });

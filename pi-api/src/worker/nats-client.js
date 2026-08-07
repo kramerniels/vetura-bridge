@@ -57,6 +57,7 @@ function loadConfig() {
         stream: process.env.NATS_STREAM || "commands",
         subject: process.env.NATS_SUBJECT || "commands.>",
         errorSubject: process.env.NATS_ERROR_SUBJECT || "errors",
+        resultSubject: process.env.NATS_RESULT_SUBJECT || "results",
         consumer: process.env.NATS_CONSUMER || "pi-printer-1",
         maxAgeSec: Number(process.env.NATS_MAX_AGE_SEC || 900),
     };
