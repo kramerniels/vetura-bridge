@@ -1,7 +1,8 @@
-# LAN portal (pi-api setup)
+# pi-api
 
-The portal is the local web UI on the Pi. It always runs (`pi-api`) and
-switches between setup (unpaired) and status (paired).
+Raspberry Pi app for DKGM: LAN portal (setup / status) plus a NATS JetStream
+worker for remote commands. This repository **is** the `pi-api` package (deployed
+to `/opt/pi-api` on the device). Local-only helpers live under `tools/`.
 
 | Doc | Audience |
 |-----|----------|
@@ -9,6 +10,18 @@ switches between setup (unpaired) and status (paired).
 | [commands.md](./commands.md) | NATS subjects, command payloads, heartbeat, helpers |
 
 Entry point: `src/portal/index.js` (`npm start`).
+
+## Layout
+
+```text
+.
+├── src/                 # portal + NATS worker
+├── deploy/              # systemd unit, helpers, install
+├── tools/
+│   └── pairing-mock/    # local cloud pairing API (dev only)
+├── pairing-api.md
+└── commands.md
+```
 
 ## Role
 
@@ -186,6 +199,26 @@ and the `update` command for OTA app updates.
 
 No systemd needed: `npm start` (port 8080). When already paired, the portal
 starts the worker child itself.
+
+#### Pairing against the local mock
+
+1. Start the mock cloud API:
+
+```bash
+cd tools/pairing-mock && npm start
+```
+
+2. Point the portal at it (in `.env` or the process environment):
+
+```bash
+CLOUD_BASE_URL=http://<your-lan-ip>:3457
+```
+
+3. From the repo root: `npm start`, open `http://localhost:8080`, complete
+   pairing via the QR / pair URL.
+
+Production uses a real online app with the same contract; do not deploy
+`tools/pairing-mock`.
 
 ## Related
 

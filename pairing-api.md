@@ -1,9 +1,10 @@
 # Pi device pairing API (online app)
 
 Contract for the online application. The Pi client lives in `src/portal/`.
-Online app code lives elsewhere. Pi runtime details (modules, worker manager,
-local UI): [README.md](./README.md). After pairing, command subjects and
-payloads: [commands.md](./commands.md).
+Online app code lives elsewhere. For local end-to-end pairing without the real
+cloud app, use [`tools/pairing-mock`](./tools/pairing-mock). Pi runtime details
+(modules, worker manager, local UI): [README.md](./README.md). After pairing,
+command subjects and payloads: [commands.md](./commands.md).
 
 ## Concepts
 

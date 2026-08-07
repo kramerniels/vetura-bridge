@@ -160,7 +160,7 @@ Include at least:
 | `deploy/` | yes (helpers, `sync-helpers.sh`, `pi-api.service`, `sudoers-pi-api`) |
 | `node_modules/` | yes — install with `npm ci --omit=dev` before zipping |
 
-Do **not** include `.env`, `credentials.creds`, or `.git`.
+Do **not** include `.env`, `credentials.creds`, `.git`, or `tools/` (dev-only).
 
 Example:
 
@@ -169,6 +169,9 @@ npm ci --omit=dev
 zip -r "pi-api-${VERSION}.zip" package.json package-lock.json src deploy node_modules
 # Upload the artifact; cloud sends the HTTPS URL via commands.<deviceId>.update
 ```
+
+Fresh device bootstrap from a git checkout: [`deploy/install.sh`](./deploy/install.sh)
+copies the same product paths into `/opt/pi-api` (never `tools/`).
 
 Zip layout may be flat (files at zip root) or a single top-level folder that
 contains `package.json`.
