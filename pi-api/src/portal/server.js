@@ -91,6 +91,9 @@ function getStatus(res, ctx) {
         addresses: listLanAddresses(),
         cloud: ctx.cloudLoop ? ctx.cloudLoop.getStatus() : null,
         pairUrl: ctx.pairUrl,
+        worker: ctx.workerManager
+            ? ctx.workerManager.getStatus()
+            : { desired: false, running: false, pid: null, startedAt: null, restarts: 0, lastExitCode: null, lastExitAt: null, lastError: null },
     });
 }
 

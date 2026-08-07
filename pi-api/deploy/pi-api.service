@@ -1,22 +1,30 @@
 [Unit]
-Description=Pi API - secure command runner
-After=network.target
+Description=Pi API (LAN portal + NATS worker)
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
 User=pi-api
 Group=pi-api
 WorkingDirectory=/opt/pi-api
-EnvironmentFile=/opt/pi-api/.env
-ExecStart=/usr/bin/node /opt/pi-api/src/nats-consumer.js
+EnvironmentFile=-/opt/pi-api/.env
+ExecStart=/usr/bin/node /opt/pi-api/src/portal/index.js
 Restart=on-failure
 RestartSec=5
+
+# Bind to port 80 without running as root
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
-ReadWritePaths=/opt/pi-api
+ReadWritePaths=/opt/pi-api /var/lib/pi-api
+
+# Kill portal and its worker child together
+KillMode=control-group
 
 [Install]
 WantedBy=multi-user.target

@@ -20,7 +20,7 @@ try {
   credsFileContents = fs.readFileSync(CREDS_PATH, "utf8");
 } catch (err) {
   console.error(
-    `Missing ${CREDS_PATH}. Copy pi-api/test_arjan_credentials.creds here.`
+    `Missing ${CREDS_PATH}. Place Scaleway NATS .creds next to server.js.`
   );
   process.exit(1);
 }

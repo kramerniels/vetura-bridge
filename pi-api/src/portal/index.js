@@ -2,12 +2,14 @@ const { ensureIdentity, STATE_PAIRED } = require("../identity");
 const { startCloudLoop } = require("./cloud");
 const { createSetupServer } = require("./server");
 const { applyPairing, configFromBootstrap } = require("./apply");
+const { createWorkerManager } = require("./worker-manager");
 
 const PORT = process.platform === "darwin" || process.platform === "win32" ? 8080 : 80;
 const HOST = "0.0.0.0";
 
 async function main() {
     const identity = ensureIdentity();
+    const workerManager = createWorkerManager();
 
     if (identity.state === STATE_PAIRED) {
         console.log(
@@ -17,6 +19,7 @@ async function main() {
                 deviceId: identity.deviceId,
             }),
         );
+        workerManager.ensureStarted();
     }
 
     let pairingLock = false;
@@ -24,8 +27,10 @@ async function main() {
     const ctx = {
         pairUrl: null,
         cloudLoop: null,
+        workerManager,
         onPaired() {
             if (ctx.cloudLoop) ctx.cloudLoop.stop();
+            workerManager.ensureStarted();
         },
     };
 
@@ -118,8 +123,12 @@ async function main() {
         );
     });
 
-    const shutdown = () => {
+    let shuttingDown = false;
+    const shutdown = async () => {
+        if (shuttingDown) return;
+        shuttingDown = true;
         if (ctx.cloudLoop) ctx.cloudLoop.stop();
+        await workerManager.stop();
         server.close(() => process.exit(0));
     };
     process.on("SIGINT", shutdown);

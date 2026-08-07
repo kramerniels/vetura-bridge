@@ -6,7 +6,7 @@ const STATE_UNPAIRED = "unpaired";
 const STATE_PAIRED = "paired";
 const STATE_FILE =
     process.platform === "darwin" || process.platform === "win32"
-        ? path.join(process.cwd(), ".pi-api-state.json")
+        ? path.join(process.cwd(), ".pi-api-runtime", "state.json")
         : "/var/lib/pi-api/state.json";
 
 function generateSecret() {
@@ -53,7 +53,7 @@ function writeIdentity(identity) {
             state: validated.state,
         },
         null,
-        2
+        2,
     )}\n`;
     const tmp = `${STATE_FILE}.${process.pid}.tmp`;
     fs.writeFileSync(tmp, payload, { mode: 0o600 });
@@ -101,7 +101,7 @@ function main() {
             state: identity.state,
             stateFile: identity.stateFile,
             hostname: `dkgm-${identity.shortId}`,
-        })
+        }),
     );
 }
 

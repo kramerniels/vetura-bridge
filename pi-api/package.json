@@ -2,9 +2,9 @@
     "name": "pi-api",
     "version": "2.0.0",
     "description": "NATS JetStream consumer for triggering whitelisted Node scripts on Raspberry Pi",
-    "main": "src/nats-consumer.js",
+    "main": "src/portal/index.js",
     "scripts": {
-        "start:portal": "node src/identity.js",
+        "start": "node src/portal/index.js"
     },
     "engines": {
         "node": ">=18"

@@ -80,6 +80,11 @@ main {
     font-size: 1.15rem;
 }
 
+.status.warn {
+    color: var(--warn);
+    font-size: 1.15rem;
+}
+
 .warn {
     color: var(--warn);
 }

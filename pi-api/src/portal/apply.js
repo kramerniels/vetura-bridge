@@ -1,6 +1,5 @@
 const fs = require("fs");
 const path = require("path");
-const { spawnSync } = require("child_process");
 const { setState, STATE_PAIRED } = require("../identity");
 const { subjectsForDevice } = require("../device-nats");
 
@@ -116,36 +115,6 @@ function writeFiles(config) {
     fs.writeFileSync(ENV_FILE, buildEnvContents(config), { mode: 0o600 });
 }
 
-function runSystemctl(args) {
-    if (process.env.PI_API_SKIP_SYSTEMCTL === "1") {
-        return { ok: true, skipped: true };
-    }
-
-    const systemctl = process.env.SYSTEMCTL_PATH || "/usr/bin/systemctl";
-    const sudo = process.env.PI_API_SYSTEMCTL_SUDO === "1";
-    const cmd = sudo ? "/usr/bin/sudo" : systemctl;
-    const fullArgs = sudo ? [systemctl, ...args] : args;
-    const result = spawnSync(cmd, fullArgs, { encoding: "utf8" });
-    if (result.status !== 0) {
-        const detail = (result.stderr || result.stdout || "").trim();
-        return {
-            ok: false,
-            error: detail || `systemctl ${args.join(" ")} failed`,
-        };
-    }
-    return { ok: true };
-}
-
-function startConsumerService() {
-    const enable = runSystemctl(["enable", "pi-api"]);
-    if (!enable.ok) return enable;
-
-    const start = runSystemctl(["start", "pi-api"]);
-    if (!start.ok) return start;
-
-    return { ok: true };
-}
-
 function applyPairing(input) {
     const validated = input && input.ok === true && input.config
         ? input
@@ -157,17 +126,6 @@ function applyPairing(input) {
 
     writeFiles(validated.config);
     setState(STATE_PAIRED);
-
-    const service = startConsumerService();
-    if (!service.ok) {
-        return {
-            ok: false,
-            errors: [
-                `Credentials saved but failed to start pi-api: ${service.error}`,
-            ],
-            partial: true,
-        };
-    }
 
     return {
         ok: true,

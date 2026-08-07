@@ -1,7 +1,8 @@
 # Pi device pairing API (online app)
 
-This document is the contract for the existing online application. The Pi
-implements the client side in `src/portal/`. Online app code lives elsewhere.
+Contract for the online application. The Pi client lives in `src/portal/`.
+Online app code lives elsewhere. Pi runtime details (modules, worker manager,
+local UI): [README.md](./README.md).
 
 ## Concepts
 
@@ -32,22 +33,37 @@ Stored in identity state as JSON. Only two values:
 
 | Status | Meaning |
 |--------|---------|
-| `unpaired` | Show LAN setup portal (QR / manual setup); poll cloud when configured |
-| `paired` | NATS consumer running; LAN portal shows status page |
+| `unpaired` | LAN setup UI (QR / manual); poll cloud when `CLOUD_BASE_URL` is set |
+| `paired` | Portal shows status UI; NATS worker runs as a **child of the portal** |
 
 ## User flow
 
-1. Pi boots unpaired → creates identity → starts LAN portal (`pi-api-setup`)
-2. If `CLOUD_BASE_URL` is set → registers with the cloud → shows QR + pair URL
+1. Pi boots → identity on disk → systemd starts `pi-api` (portal)
+2. If unpaired and `CLOUD_BASE_URL` is set → register with cloud → show QR + pair URL
 3. User opens `{CLOUD_BASE_URL}/devices/pair?deviceId=...&claim=...` (via QR)
 4. User logs in on the **online** app and confirms pairing to their tenant
 5. Online app enqueues a provisioning job (Scaleway NATS credentials + JetStream consumer)
 6. Browser shows a waiting state (“Bezig met aanmaken van certificaten…”) and polls device status until `paired` or `failed`
-7. Pi polls bootstrap; when credentials are available it writes creds + `.env`, marks local state `paired`, starts `pi-api` (NATS consumer), and stops cloud polling
-8. LAN portal **stays up** and switches to the paired status page (`http://<pi-ip>/` or `http://dkgm-<shortId>.local/`)
+7. Pi polls bootstrap; when credentials are available it writes creds + `.env`, marks local state `paired`, **starts the NATS worker child**, and stops cloud polling
+8. Portal **stays up** as the paired status page (`http://<pi-ip>/` or `http://dkgm-<shortId>.local/`), including live worker status
 
 Manual fallback (temporary): paste Scaleway `.creds` on the LAN setup page
-(`POST /api/manual-setup`).
+(`POST /api/manual-setup`) — same apply path, then worker start.
+
+## Pi process model
+
+One long-running systemd unit: **`pi-api`**
+([`deploy/pi-api.service`](../deploy/pi-api.service)).
+
+- Starts `src/portal/index.js` and restarts it on failure
+- When local state is `paired`, the portal spawns `src/worker/nats-consumer.js`
+  as a child and restarts it with backoff if it exits
+- Stopping `pi-api` stops the portal **and** the worker child
+
+There is no separate worker unit.
+
+Required env for QR pairing: `CLOUD_BASE_URL` (in `/opt/pi-api/.env` or the
+process environment). Without it, manual setup remains available; no QR.
 
 ## Pi on-disk layout
 
@@ -55,37 +71,30 @@ Manual fallback (temporary): paste Scaleway `.creds` on the LAN setup page
 |-------------------|---------|
 | `/var/lib/pi-api/state.json` | Identity: `{ deviceId, claimSecret, state }` |
 | `/opt/pi-api/credentials.creds` | NATS credentials after pairing |
-| `/opt/pi-api/.env` | Generated NATS config for the consumer |
+| `/opt/pi-api/.env` | NATS config for the worker (+ optional `CLOUD_BASE_URL`) |
 
 Local development (macOS / Windows):
 
 | Path | Purpose |
 |------|---------|
-| `.pi-api-state.json` | Identity state (cwd) |
+| `.pi-api-runtime/state.json` | Identity state |
 | `.pi-api-runtime/credentials.creds` | Creds |
 | `.pi-api-runtime/.env` | Generated NATS config |
 
-### systemd units
-
-| Unit | Role |
-|------|------|
-| `pi-api-identity` | Oneshot: ensure identity + hostname `dkgm-<shortId>` |
-| `pi-api-setup` | Always-on LAN portal (setup when unpaired, status when paired) |
-| `pi-api` | NATS consumer; enabled/started only after pairing |
-
-Required env for QR pairing: `CLOUD_BASE_URL` in `/opt/pi-api/.env`.
-
 ## LAN portal (Pi)
 
-Listens on `0.0.0.0:80` (Linux) or `:8080` (local dev).
+Listens on `0.0.0.0:80` (Linux) or `:8080` (local dev). Entry: `npm start`.
 
 | Method | Path | Purpose |
 |--------|------|---------|
 | `GET` | `/` | Setup page (QR) or paired status page |
-| `GET` | `/api/status` | `{ state, deviceId, shortId, addresses, cloud, pairUrl }` |
+| `GET` | `/api/status` | `{ state, deviceId, shortId, addresses, cloud, pairUrl, worker }` |
 | `POST` | `/api/manual-setup` | JSON body with Scaleway creds + optional NATS fields |
 
-The setup page polls `/api/status` every 3s and reloads when `state` becomes `paired`.
+- Setup page polls `/api/status` every 3s and reloads when `state` becomes `paired`
+- Paired page polls `/api/status` every 3s for worker status (`desired`, `running`, `pid`, `restarts`, `lastError`, …)
+
+Full status shape: [README.md](./README.md).
 
 ## Endpoints (cloud)
 
@@ -245,15 +254,15 @@ errors.<deviceId>
 
 ## Factory reset
 
-On device: `deploy/factory-reset.sh` (as root).
+No dedicated reset script in the repo yet. On the device (as root), roughly:
 
-1. Stop `pi-api` and `pi-api-setup`
+1. `systemctl stop pi-api` (stops portal + worker child)
 2. Remove `/opt/pi-api/credentials.creds`
-3. Wipe and recreate `/var/lib/pi-api` (new identity on next boot)
-4. Disable `pi-api`; re-run `pi-api-identity`; enable/start `pi-api-setup`
+3. Wipe and recreate `/var/lib/pi-api` (new identity on next portal start)
+4. `systemctl start pi-api`
 
-Note: `/opt/pi-api/.env` is not wiped (e.g. `CLOUD_BASE_URL` can remain). New
-pairing overwrites NATS keys when bootstrap succeeds.
+Note: `/opt/pi-api/.env` need not be wiped (e.g. `CLOUD_BASE_URL` can remain).
+New pairing overwrites NATS keys when bootstrap succeeds.
 
 ## Security checklist
 
