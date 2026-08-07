@@ -173,6 +173,11 @@ The recipe for that service lives in
 [`deploy/pi-api.service`](../deploy/pi-api.service)
 (`ExecStart` points at `src/portal/index.js`).
 
+Before the portal starts, `ExecStartPre=+/opt/pi-api/deploy/sync-helpers.sh`
+(as root) installs maintenance helpers, sudoers, and refreshes this unit from
+the package tree. See [pairing-api.md — Maintenance helpers](./pairing-api.md#maintenance-helpers)
+and the `update` command for OTA app updates.
+
 ### Local development
 
 No systemd needed: `npm start` (port 8080). When already paired, the portal

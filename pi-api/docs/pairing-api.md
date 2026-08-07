@@ -227,7 +227,8 @@ from `deviceId` (and accepts optional overrides if present):
 ## Publishing commands (after pairing)
 
 Publish to JetStream subject `commands.<deviceId>.<command>`. Commands:
-`printLabel`, `ping`, `systemUpdate`, `systemReboot`, `setHeartbeatInterval`.
+`printLabel`, `ping`, `systemUpdate`, `systemReboot`, `setHeartbeatInterval`,
+`update`.
 
 ```text
 commands.<deviceId>.printLabel
@@ -235,6 +236,7 @@ commands.<deviceId>.ping
 commands.<deviceId>.systemUpdate
 commands.<deviceId>.systemReboot
 commands.<deviceId>.setHeartbeatInterval
+commands.<deviceId>.update
 ```
 
 ### `printLabel`
@@ -292,7 +294,7 @@ Example success `result`:
 }
 ```
 
-Requires root helpers + sudoers on the Pi (see [Maintenance helpers](#maintenance-helpers-systemupdate--systemreboot)).
+Requires root helpers + sudoers on the Pi (see [Maintenance helpers](#maintenance-helpers)).
 
 ### `systemReboot`
 
@@ -326,6 +328,69 @@ Example success `result`:
 { "intervalSec": 300 }
 ```
 
+### `update`
+
+Replaces the application tree at `/opt/pi-api` from an HTTPS zip download (no
+git on the device). Preserves `.env` and `credentials.creds`. On success schedules
+`systemctl restart pi-api` so portal + worker load the new code; helpers/sudoers/
+unit are re-synced on the next start (see [Maintenance helpers](#maintenance-helpers)).
+
+```json
+{ "url": "https://example.com/releases/pi-api-2.1.0.zip" }
+```
+
+| Field | Rules |
+|-------|--------|
+| `url` | HTTPS URL to a zip of the app package (must include `node_modules`) |
+
+Example success `result`:
+
+```json
+{
+  "ok": true,
+  "version": "2.1.0",
+  "restartScheduled": true,
+  "durationMs": 12345
+}
+```
+
+**Cloud concurrency:** while an `update` is in flight for a device, the cloud
+must **not** publish other commands to that device (`printLabel`, `ping`,
+`systemUpdate`, `systemReboot`, `setHeartbeatInterval`, another `update`, …).
+The worker does not enforce an exclusive lock in v1. Resume other commands after
+the matching `results` / `errors` message (or a cloud-side timeout).
+
+**Rollback:** if the swap fails after moving the live tree aside, the helper
+restores `/opt/pi-api.previous` → `/opt/pi-api`. After a successful swap the
+previous tree is deleted to free disk.
+
+#### Packaging the release zip
+
+Build on **linux/arm64** (Pi architecture) when possible so native deps match.
+
+Include at least:
+
+| Path | Required |
+|------|----------|
+| `package.json` | yes (`"name": "pi-api"`) |
+| `package-lock.json` | recommended |
+| `src/` | yes |
+| `deploy/` | yes (helpers, `sync-helpers.sh`, `pi-api.service`, `sudoers-pi-api`) |
+| `node_modules/` | yes — install with `npm ci --omit=dev` before zipping |
+
+Do **not** include `.env`, `credentials.creds`, or `.git`.
+
+Example:
+
+```bash
+npm ci --omit=dev
+zip -r "pi-api-${VERSION}.zip" package.json package-lock.json src deploy node_modules
+# Upload the artifact; cloud sends the HTTPS URL via commands.<deviceId>.update
+```
+
+Zip layout may be flat (files at zip root) or a single top-level folder that
+contains `package.json`.
+
 ### Success and failure subjects
 
 Subscribe to permanent failures for the device on one shared subject:
@@ -352,7 +417,7 @@ Result envelope:
 ```
 
 `result` is the script stdout JSON (`printLabel`: printer ack; `ping`: system
-info; `systemUpdate` / `systemReboot`: maintenance summary;
+info; `systemUpdate` / `systemReboot` / `update`: maintenance summary;
 `setHeartbeatInterval`: new interval). All successful commands publish here.
 Proactive heartbeats also use this subject (see [Heartbeat](#heartbeat)).
 
@@ -379,26 +444,42 @@ is no JetStream stream sequence):
 }
 ```
 
-## Maintenance helpers (`systemUpdate` / `systemReboot`)
+## Maintenance helpers
 
-The worker runs as `pi-api` and calls fixed root helpers via sudo (`sudo -n`).
+The worker runs as `pi-api` and calls fixed root helpers via sudo (`sudo -n`):
 
-On each device (as root):
+| Helper | Command |
+|--------|---------|
+| `/usr/local/sbin/pi-api-system-update` | `systemUpdate` |
+| `/usr/local/sbin/pi-api-system-reboot` | `systemReboot` |
+| `/usr/local/sbin/pi-api-app-update` | `update` |
 
-1. Copy helpers to `/usr/local/sbin/` (mode `0755`, owner `root:root`):
-   - `deploy/helpers/pi-api-system-update`
-   - `deploy/helpers/pi-api-system-reboot`
-2. Install sudoers: copy `deploy/sudoers-pi-api` to `/etc/sudoers.d/pi-api`
-   (mode `0440`), then `visudo -cf /etc/sudoers.d/pi-api`
-3. Install/update `deploy/pi-api.service` and run `systemctl daemon-reload &&
-   systemctl restart pi-api`
+Helpers, sudoers, and the systemd unit are **synced automatically** on every
+portal start by:
+
+```ini
+ExecStartPre=+/opt/pi-api/deploy/sync-helpers.sh
+```
+
+(`+` = run as root). That script installs:
+
+1. `deploy/helpers/*` → `/usr/local/sbin/` (mode `0755`, `root:root`)
+2. `deploy/sudoers-pi-api` → `/etc/sudoers.d/pi-api` (validated with `visudo -cf`, mode `0440`)
+3. `deploy/pi-api.service` → `/etc/systemd/system/pi-api.service` + `systemctl daemon-reload`
+
+So the first boot after placing the package under `/opt/pi-api`, and every
+restart after an OTA `update`, picks up new helpers without a manual copy step.
+
+Bootstrap for a brand-new image still needs the package at `/opt/pi-api` and the
+unit enabled once (or the unit already pointing at `ExecStartPre` / `ExecStart`
+under `/opt/pi-api`); after that, sync keeps the rest current.
 
 The unit must **not** set `NoNewPrivileges=yes` or `ProtectSystem=strict` (those
 block sudo/`apt`). `AmbientCapabilities=CAP_NET_BIND_SERVICE` remains for port
 80. Sudoers allows only:
 
 ```text
-pi-api ALL=(root) NOPASSWD: /usr/local/sbin/pi-api-system-update, /usr/local/sbin/pi-api-system-reboot
+pi-api ALL=(root) NOPASSWD: /usr/local/sbin/pi-api-system-update, /usr/local/sbin/pi-api-system-reboot, /usr/local/sbin/pi-api-app-update
 ```
 
 ## Factory reset

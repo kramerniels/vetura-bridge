@@ -2,21 +2,25 @@ const { z } = require("zod");
 const { readStdin } = require("./lib/read-stdin");
 const { runSudoHelper } = require("./lib/run-sudo-helper");
 
-const HELPER_PATH = "/usr/local/sbin/pi-api-system-update";
-const timeoutMs = 45 * 60 * 1000;
+const HELPER_PATH = "/usr/local/sbin/pi-api-app-update";
+const timeoutMs = 300_000;
 
 const schema = z
     .object({
-        recipe: z.enum(["fullUpgrade", "distUpgrade"]),
+        url: z
+            .string()
+            .url()
+            .refine((value) => value.startsWith("https://"), {
+                message: "url must use https://",
+            }),
     })
     .strict();
 
 async function run(data) {
-    const { recipe } = data;
-    return runSudoHelper(HELPER_PATH, [recipe], {
+    return runSudoHelper(HELPER_PATH, [data.url], {
         timeoutMs,
-        maxBuffer: 2 * 1024 * 1024,
-        label: `systemUpdate helper (${recipe})`,
+        maxBuffer: 1024 * 1024,
+        label: "update helper",
     });
 }
 

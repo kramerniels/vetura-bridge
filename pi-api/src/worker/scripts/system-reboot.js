@@ -1,9 +1,6 @@
-const { execFile } = require("child_process");
-const { promisify } = require("util");
 const { z } = require("zod");
 const { readStdin } = require("./lib/read-stdin");
-
-const execFileAsync = promisify(execFile);
+const { runSudoHelper } = require("./lib/run-sudo-helper");
 
 const HELPER_PATH = "/usr/local/sbin/pi-api-system-reboot";
 const timeoutMs = 15_000;
@@ -11,40 +8,11 @@ const timeoutMs = 15_000;
 const schema = z.object({}).strict();
 
 async function run() {
-    let stdout;
-    let stderr;
-
-    try {
-        const result = await execFileAsync("sudo", ["-n", HELPER_PATH], {
-            timeout: timeoutMs,
-            maxBuffer: 64 * 1024,
-        });
-        stdout = result.stdout;
-        stderr = result.stderr;
-    } catch (err) {
-        const message = [err.stderr, err.stdout, err.message]
-            .map((v) => (v == null ? "" : String(v).trim()))
-            .filter(Boolean)
-            .join("\n");
-        throw new Error(message || "systemReboot helper failed");
-    }
-
-    const raw = String(stdout || "").trim();
-    if (!raw) {
-        throw new Error(
-            stderr
-                ? String(stderr).trim()
-                : "systemReboot helper returned empty stdout",
-        );
-    }
-
-    try {
-        return JSON.parse(raw);
-    } catch {
-        throw new Error(
-            `systemReboot helper returned non-JSON stdout: ${raw.slice(0, 500)}`,
-        );
-    }
+    return runSudoHelper(HELPER_PATH, [], {
+        timeoutMs,
+        maxBuffer: 64 * 1024,
+        label: "systemReboot helper",
+    });
 }
 
 async function main() {

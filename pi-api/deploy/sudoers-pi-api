@@ -1,3 +1,4 @@
 # Install as /etc/sudoers.d/pi-api (mode 0440). Validate with: visudo -cf /etc/sudoers.d/pi-api
 # Allows the pi-api service user to run only the fixed maintenance helpers as root.
-pi-api ALL=(root) NOPASSWD: /usr/local/sbin/pi-api-system-update, /usr/local/sbin/pi-api-system-reboot
+# Synced automatically by /opt/pi-api/deploy/sync-helpers.sh on service start.
+pi-api ALL=(root) NOPASSWD: /usr/local/sbin/pi-api-system-update, /usr/local/sbin/pi-api-system-reboot, /usr/local/sbin/pi-api-app-update
