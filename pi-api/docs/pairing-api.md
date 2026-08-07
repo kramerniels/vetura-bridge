@@ -227,13 +227,14 @@ from `deviceId` (and accepts optional overrides if present):
 ## Publishing commands (after pairing)
 
 Publish to JetStream subject `commands.<deviceId>.<command>`. Commands:
-`printLabel`, `ping`, `systemUpdate`, `systemReboot`.
+`printLabel`, `ping`, `systemUpdate`, `systemReboot`, `setHeartbeatInterval`.
 
 ```text
 commands.<deviceId>.printLabel
 commands.<deviceId>.ping
 commands.<deviceId>.systemUpdate
 commands.<deviceId>.systemReboot
+commands.<deviceId>.setHeartbeatInterval
 ```
 
 ### `printLabel`
@@ -305,6 +306,26 @@ Schedules a reboot after publishing `{ "ok": true, "scheduled": true }`. The
 cloud decides when (for example after `systemUpdate` returns
 `rebootRequired: true`).
 
+### `setHeartbeatInterval`
+
+Changes how often the worker publishes a proactive heartbeat (see
+[Heartbeat](#heartbeat)). The new interval applies immediately in memory and
+resets to the default (3600s) when the worker restarts.
+
+```json
+{ "intervalSec": 300 }
+```
+
+| Field | Rules |
+|-------|--------|
+| `intervalSec` | integer, minimum `60`, maximum `86400` |
+
+Example success `result`:
+
+```json
+{ "intervalSec": 300 }
+```
+
 ### Success and failure subjects
 
 Subscribe to permanent failures for the device on one shared subject:
@@ -331,8 +352,32 @@ Result envelope:
 ```
 
 `result` is the script stdout JSON (`printLabel`: printer ack; `ping`: system
-info; `systemUpdate` / `systemReboot`: maintenance summary). All successful
-commands publish here.
+info; `systemUpdate` / `systemReboot`: maintenance summary;
+`setHeartbeatInterval`: new interval). All successful commands publish here.
+Proactive heartbeats also use this subject (see [Heartbeat](#heartbeat)).
+
+## Heartbeat
+
+After connecting to NATS, the worker publishes a lightweight heartbeat on
+`results.<deviceId>` immediately, then on a timer (default every **3600**
+seconds). The interval can be changed at runtime with `setHeartbeatInterval`;
+it is **not** persisted across worker restarts.
+
+Envelope (same shape as command results; `messageId` is `null` because there
+is no JetStream stream sequence):
+
+```json
+{
+  "command": "heartbeat",
+  "messageId": null,
+  "result": {
+    "deviceId": "550e8400-e29b-41d4-a716-446655440000",
+    "intervalSec": 3600,
+    "timestamp": "2026-08-07T17:00:00.000Z"
+  },
+  "timestamp": "2026-08-07T17:00:00.000Z"
+}
+```
 
 ## Maintenance helpers (`systemUpdate` / `systemReboot`)
 

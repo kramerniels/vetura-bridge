@@ -12,6 +12,7 @@ const {
 } = require("./errors");
 const { commandFromSubject, validateRequest } = require("./commands");
 const { runScript } = require("./runner");
+const heartbeat = require("./heartbeat");
 
 const codec = JSONCodec();
 
@@ -98,6 +99,8 @@ async function startConsumer() {
         consumer: config.consumer,
     });
 
+    heartbeat.start(nc, config);
+
     for await (const msg of messages) {
         const messageId = String(msg.info.streamSequence);
         let body;
@@ -116,6 +119,9 @@ async function startConsumer() {
                 body,
                 msg.subject,
             );
+            if (command === "setHeartbeatInterval") {
+                heartbeat.setIntervalSec(result.intervalSec);
+            }
             await publishResult(
                 nc,
                 config,
