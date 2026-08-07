@@ -3,7 +3,11 @@ function isTransientError(err) {
     return (
         message.includes("Printer connection timed out") ||
         message.includes("Printer connection failed") ||
-        message.includes("Script timed out")
+        message.includes("Script timed out") ||
+        message.includes("Could not get lock") ||
+        message.includes("Unable to acquire the dpkg frontend lock") ||
+        message.includes("dpkg frontend is locked") ||
+        message.includes("is another process using it")
     );
 }
 

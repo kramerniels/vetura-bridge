@@ -9,6 +9,8 @@ const SCRIPTS_DIR = path.join(__dirname, "scripts");
 const scriptWhitelist = {
     printLabel: path.join(SCRIPTS_DIR, "print-label.js"),
     ping: path.join(SCRIPTS_DIR, "ping.js"),
+    systemUpdate: path.join(SCRIPTS_DIR, "system-update.js"),
+    systemReboot: path.join(SCRIPTS_DIR, "system-reboot.js"),
 };
 
 function commandFromSubject(subject) {

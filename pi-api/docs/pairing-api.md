@@ -227,11 +227,13 @@ from `deviceId` (and accepts optional overrides if present):
 ## Publishing commands (after pairing)
 
 Publish to JetStream subject `commands.<deviceId>.<command>`. Commands:
-`printLabel`, `ping`.
+`printLabel`, `ping`, `systemUpdate`, `systemReboot`.
 
 ```text
 commands.<deviceId>.printLabel
 commands.<deviceId>.ping
+commands.<deviceId>.systemUpdate
+commands.<deviceId>.systemReboot
 ```
 
 ### `printLabel`
@@ -261,6 +263,48 @@ Body must be an empty object:
 On success the worker publishes system diagnostics (version, disk, memory, OS,
 network, device identity) inside the result envelope on `results.<deviceId>`.
 
+### `systemUpdate`
+
+Runs a **fixed apt recipe** on the device (no free-form shell/apt flags). Never
+reboots; check `rebootRequired` in the result and send `systemReboot` separately
+when needed.
+
+```json
+{ "recipe": "fullUpgrade" }
+```
+
+| `recipe` | Behavior |
+|----------|----------|
+| `fullUpgrade` | `apt-get update` + `apt-get upgrade -y` (noninteractive, force-confold) |
+| `distUpgrade` | `apt-get update` + `apt-get dist-upgrade -y` |
+
+Example success `result`:
+
+```json
+{
+  "recipe": "fullUpgrade",
+  "ok": true,
+  "rebootRequired": true,
+  "durationMs": 123456,
+  "apt": { "updateExitCode": 0, "upgradeExitCode": 0 },
+  "summary": "…truncated apt output…"
+}
+```
+
+Requires root helpers + sudoers on the Pi (see [Maintenance helpers](#maintenance-helpers-systemupdate--systemreboot)).
+
+### `systemReboot`
+
+Body must be an empty object:
+
+```json
+{}
+```
+
+Schedules a reboot after publishing `{ "ok": true, "scheduled": true }`. The
+cloud decides when (for example after `systemUpdate` returns
+`rebootRequired: true`).
+
 ### Success and failure subjects
 
 Subscribe to permanent failures for the device on one shared subject:
@@ -286,8 +330,32 @@ Result envelope:
 }
 ```
 
-`result` is the script stdout JSON (for `printLabel`: printer ack fields; for
-`ping`: system info). All successful commands publish here.
+`result` is the script stdout JSON (`printLabel`: printer ack; `ping`: system
+info; `systemUpdate` / `systemReboot`: maintenance summary). All successful
+commands publish here.
+
+## Maintenance helpers (`systemUpdate` / `systemReboot`)
+
+The worker runs as `pi-api` and calls fixed root helpers via sudo (`sudo -n`).
+
+On each device (as root):
+
+1. Copy helpers to `/usr/local/sbin/` (mode `0755`, owner `root:root`):
+   - `deploy/helpers/pi-api-system-update`
+   - `deploy/helpers/pi-api-system-reboot`
+2. Install sudoers: copy `deploy/sudoers-pi-api` to `/etc/sudoers.d/pi-api`
+   (mode `0440`), then `visudo -cf /etc/sudoers.d/pi-api`
+3. Install/update `deploy/pi-api.service` and run `systemctl daemon-reload &&
+   systemctl restart pi-api`
+
+The unit must **not** set `NoNewPrivileges=yes` or `ProtectSystem=strict` (those
+block sudo/`apt`). `AmbientCapabilities=CAP_NET_BIND_SERVICE` remains for port
+80. Sudoers allows only:
+
+```text
+pi-api ALL=(root) NOPASSWD: /usr/local/sbin/pi-api-system-update, /usr/local/sbin/pi-api-system-reboot
+```
+
 ## Factory reset
 
 No dedicated reset script in the repo yet. On the device (as root), roughly:

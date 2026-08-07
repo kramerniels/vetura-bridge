@@ -1,0 +1,11 @@
+#!/bin/sh
+# Root helper for NATS command systemReboot.
+# Install: copy to /usr/local/sbin/, root:root, mode 0755.
+# Prints JSON ack first, then schedules reboot so the worker can publish results.
+set -eu
+
+printf '%s\n' '{"ok":true,"scheduled":true}'
+
+# Defer reboot so the parent can read stdout, publish results, and ack NATS.
+( sleep 3; /bin/systemctl reboot ) >/dev/null 2>&1 &
+exit 0
