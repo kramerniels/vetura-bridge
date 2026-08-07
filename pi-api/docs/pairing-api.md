@@ -56,7 +56,7 @@ One long-running systemd unit: **`pi-api`**
 ([`deploy/pi-api.service`](../deploy/pi-api.service)).
 
 - Starts `src/portal/index.js` and restarts it on failure
-- When local state is `paired`, the portal spawns `src/worker/nats-consumer.js`
+- When local state is `paired`, the portal spawns `src/worker/main.js`
   as a child and restarts it with backoff if it exits
 - Stopping `pi-api` stops the portal **and** the worker child
 
@@ -205,7 +205,7 @@ Pi polling: register retry every **10s** until success, then bootstrap every **3
 {
   "natsUrl": "tls://nats.mnq.nl-ams.scaleway.com:4222",
   "credsFileContents": "-----BEGIN NATS USER JWT-----\n...\n",
-  "maxAgeSec": 3600
+  "maxAgeSec": 900
 }
 ```
 

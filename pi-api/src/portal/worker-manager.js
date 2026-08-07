@@ -4,7 +4,7 @@ const { spawn } = require("child_process");
 const dotenv = require("dotenv");
 
 const PACKAGE_ROOT = path.join(__dirname, "../..");
-const WORKER_SCRIPT = path.join(__dirname, "../worker/nats-consumer.js");
+const WORKER_SCRIPT = path.join(__dirname, "../worker/main.js");
 const APP_DIR =
     process.platform === "darwin" || process.platform === "win32"
         ? path.join(process.cwd(), ".pi-api-runtime")

@@ -60,7 +60,7 @@ async function renderSetupPage(ctx) {
         subject: defaults.subject || "",
         errorSubject: defaults.errorSubject || "",
         consumer: defaults.consumer || "",
-        maxAgeSec: String(defaults.maxAgeSec || "3600"),
+        maxAgeSec: String(defaults.maxAgeSec || "900"),
     });
 }
 

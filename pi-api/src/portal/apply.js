@@ -11,7 +11,7 @@ const ENV_FILE = path.join(APP_DIR, ".env");
 const DEFAULTS = {
     NATS_URL: "tls://nats.mnq.nl-ams.scaleway.com:4222",
     NATS_STREAM: "commands",
-    NATS_MAX_AGE_SEC: "3600",
+    NATS_MAX_AGE_SEC: "900",
 };
 
 function escapeEnvValue(value) {
