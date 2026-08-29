@@ -6,6 +6,7 @@ to `/opt/pi-api` on the device). Local-only helpers live under `tools/`.
 
 | Doc | Audience |
 |-----|----------|
+| [tools/image/README.md](./tools/image/README.md) | Install on a Pi: build & flash the golden SD image |
 | [pairing-api.md](./pairing-api.md) | Cloud pairing contract (register / pair / bootstrap) |
 | [commands.md](./commands.md) | NATS subjects, command payloads, heartbeat, helpers |
 
@@ -16,12 +17,20 @@ Entry point: `src/portal/index.js` (`npm start`).
 ```text
 .
 ├── src/                 # portal + NATS worker
-├── deploy/              # systemd unit, helpers, install
+├── deploy/              # systemd unit, helpers (runtime + OTA)
 ├── tools/
+│   ├── image/           # pi-gen golden SD image (first install)
 │   └── pairing-mock/    # local cloud pairing API (dev only)
 ├── pairing-api.md
 └── commands.md
 ```
+
+## Install on a Raspberry Pi
+
+Flash the golden image — that is the only first-install path. See
+[tools/image/README.md](./tools/image/README.md) (pi-gen build, config, flash,
+first boot / QR pairing). App updates after pairing go over NATS
+([commands.md](./commands.md)).
 
 ## Role
 
@@ -222,5 +231,6 @@ Production uses a real online app with the same contract; do not deploy
 
 ## Related
 
+- Device install (SD image): [tools/image/README.md](./tools/image/README.md)
 - Cloud pairing contract: [pairing-api.md](./pairing-api.md)
 - NATS commands, heartbeat, helpers: [commands.md](./commands.md)

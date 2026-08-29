@@ -170,8 +170,9 @@ zip -r "pi-api-${VERSION}.zip" package.json package-lock.json src deploy node_mo
 # Upload the artifact; cloud sends the HTTPS URL via commands.<deviceId>.update
 ```
 
-Fresh device bootstrap from a git checkout: [`deploy/install.sh`](./deploy/install.sh)
-copies the same product paths into `/opt/pi-api` (never `tools/`).
+Fresh devices get the same product paths via the golden SD image
+([tools/image/README.md](./tools/image/README.md)); never include `tools/` in
+the zip.
 
 Zip layout may be flat (files at zip root) or a single top-level folder that
 contains `package.json`.
@@ -252,12 +253,11 @@ ExecStartPre=+/opt/pi-api/deploy/sync-helpers.sh
 2. `deploy/sudoers-pi-api` → `/etc/sudoers.d/pi-api` (validated with `visudo -cf`, mode `0440`)
 3. `deploy/pi-api.service` → `/etc/systemd/system/pi-api.service` + `systemctl daemon-reload`
 
-So the first boot after placing the package under `/opt/pi-api`, and every
-restart after an OTA `update`, picks up new helpers without a manual copy step.
-
-Bootstrap for a brand-new image still needs the package at `/opt/pi-api` and the
-unit enabled once (or the unit already pointing at `ExecStartPre` / `ExecStart`
-under `/opt/pi-api`); after that, sync keeps the rest current. Unit context:
+So the first boot after the golden image (or every restart after an OTA
+`update`) picks up new helpers without a manual copy step. The image build
+places the package at `/opt/pi-api` and enables the unit
+([tools/image/README.md](./tools/image/README.md)); after that, sync keeps the
+rest current. Unit context:
 [README.md — systemd](./README.md#systemd-production-on-the-pi).
 
 The unit must **not** set `NoNewPrivileges=yes` or `ProtectSystem=strict` (those

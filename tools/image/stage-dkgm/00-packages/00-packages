@@ -1,0 +1,6 @@
+curl
+ca-certificates
+unzip
+avahi-daemon
+libnss-mdns
+sudo
