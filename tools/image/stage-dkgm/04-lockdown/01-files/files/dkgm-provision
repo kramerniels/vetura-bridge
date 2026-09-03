@@ -1,6 +1,6 @@
 #!/bin/sh
 # First-boot provisioner: OTP key + request LUKS encrypt, then signed boot.
-# Runs before pi-api. Reboots as needed; pairing starts after this completes.
+# Runs before dkgm-agent. Reboots as needed; pairing starts after this completes.
 set -eu
 
 STATE_DONE=/boot/firmware/dkgm-provision.done

@@ -24,7 +24,7 @@ WPA_COUNTRY='NL'
 DEPLOY_COMPRESSION='xz'
 COMPRESSION_LEVEL=6
 
-# Online app base URL baked into /opt/pi-api/.env (override in config.local)
+# Online app base URL baked into /opt/dkgm-agent/.env (override in config.local)
 export CLOUD_BASE_URL='https://app.example.com'
 
 # Lite base (stage0–2) + DKGM stage; desktop stages skipped by build.sh

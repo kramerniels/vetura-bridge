@@ -1,7 +1,7 @@
 #!/bin/bash -e
-# Seed /opt/pi-api/.env with CLOUD_BASE_URL (and NATS placeholders from .env.example).
+# Seed /opt/dkgm-agent/.env with CLOUD_BASE_URL (and NATS placeholders from .env.example).
 
-APP_DIR="${ROOTFS_DIR}/opt/pi-api"
+APP_DIR="${ROOTFS_DIR}/opt/dkgm-agent"
 ENV_FILE="${APP_DIR}/.env"
 EXAMPLE="${APP_DIR}/.env.example"
 
@@ -26,4 +26,4 @@ fi
 
 chmod 600 "${ENV_FILE}"
 # Ownership fixed in 01-run-chroot of previous step may be lost after copy; fix here via numeric if needed.
-# pi-api uid is assigned in chroot; defer chown to a small chroot script.
+# dkgm-agent uid is assigned in chroot; defer chown to a small chroot script.

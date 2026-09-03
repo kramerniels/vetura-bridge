@@ -6,8 +6,8 @@ const STATE_UNPAIRED = "unpaired";
 const STATE_PAIRED = "paired";
 const STATE_FILE =
     process.platform === "darwin" || process.platform === "win32"
-        ? path.join(process.cwd(), ".pi-api-runtime", "state.json")
-        : "/var/lib/pi-api/state.json";
+        ? path.join(process.cwd(), ".dkgm-agent-runtime", "state.json")
+        : "/var/lib/dkgm-agent/state.json";
 
 function generateSecret() {
     return crypto

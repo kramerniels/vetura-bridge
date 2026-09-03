@@ -1,6 +1,6 @@
 # DKGM Pi golden image
 
-Build a flashable **Raspberry Pi 5** OS Lite (64-bit) image with **pi-api**
+Build a flashable **Raspberry Pi 5** OS Lite (64-bit) image with **dkgm-agent**
 preinstalled. This is the **only** first-install path for devices. App updates
 after pairing go over NATS (see [commands.md](../../commands.md)).
 
@@ -10,10 +10,10 @@ boot** rejects a tweaked boot partition. There is no overlay filesystem.
 
 | Included | Not included (per device) |
 |----------|---------------------------|
-| Raspberry Pi OS Lite 64-bit (Trixie), Pi 5 | `/var/lib/pi-api/state.json` |
+| Raspberry Pi OS Lite 64-bit (Trixie), Pi 5 | `/var/lib/dkgm-agent/state.json` |
 | Node.js 20 | `credentials.creds` / NATS pairing |
-| `/opt/pi-api` + systemd `pi-api` enabled | LUKS passphrase (derived from OTP + CID) |
-| `/opt/pi-api/.env` with `CLOUD_BASE_URL` | |
+| `/opt/dkgm-agent` + systemd `dkgm-agent` enabled | LUKS passphrase (derived from OTP + CID) |
+| `/opt/dkgm-agent/.env` with `CLOUD_BASE_URL` | |
 | Support SSH authorized_keys (public key only) | Signing **private** key |
 | Signed `boot.img` / `boot.sig` in `/usr/lib/dkgm/secure-boot/` | |
 
@@ -119,7 +119,7 @@ tools/image/
   config                 # shared pi-gen defaults
   config.local.example   # secrets / SSH pubkey / signing key path
   scripts/rpi-eeprom-digest
-  stage-dkgm/            # Lite + pi-api + lockdown + signed boot.img
+  stage-dkgm/            # Lite + dkgm-agent + lockdown + signed boot.img
   .pi-gen/               # gitignored clone
   deploy/                # gitignored build output
 ```
@@ -127,5 +127,5 @@ tools/image/
 ## Notes
 
 - `tools/` is never part of OTA release zips; only the image build uses this tree.
-- Runtime helpers and the systemd unit still live under repo `deploy/` and are
-  copied into `/opt/pi-api` during the image build (and later OTA).
+- Runtime helpers and the systemd unit live under repo `packaging/` and are
+  copied into `/opt/dkgm-agent` during the image build (and later OTA).

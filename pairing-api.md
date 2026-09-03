@@ -40,7 +40,7 @@ Stored in identity state as JSON. Only two values:
 
 ## User flow
 
-1. Pi boots → identity on disk → systemd starts `pi-api` (portal)
+1. Pi boots → identity on disk → systemd starts `dkgm-agent` (portal)
 2. If unpaired and `CLOUD_BASE_URL` is set → register with cloud → show QR + pair URL
 3. User opens `{CLOUD_BASE_URL}/devices/pair?deviceId=...&claim=...` (via QR)
 4. User logs in on the **online** app and confirms pairing to their tenant
@@ -54,35 +54,35 @@ Manual fallback (temporary): paste Scaleway `.creds` on the LAN setup page
 
 ## Pi process model
 
-One long-running systemd unit: **`pi-api`**
-([`deploy/pi-api.service`](./deploy/pi-api.service)).
+One long-running systemd unit: **`dkgm-agent`**
+([`packaging/dkgm-agent.service`](./packaging/dkgm-agent.service)).
 
 - Starts `src/portal/index.js` and restarts it on failure
 - When local state is `paired`, the portal spawns `src/worker/main.js`
   as a child and restarts it with backoff if it exits
-- Stopping `pi-api` stops the portal **and** the worker child
+- Stopping `dkgm-agent` stops the portal **and** the worker child
 
 There is no separate worker unit. Full systemd / module detail:
 [README.md](./README.md).
 
-Required env for QR pairing: `CLOUD_BASE_URL` (in `/opt/pi-api/.env` or the
+Required env for QR pairing: `CLOUD_BASE_URL` (in `/opt/dkgm-agent/.env` or the
 process environment). Without it, manual setup remains available; no QR.
 
 ## Pi on-disk layout
 
 | Path (production) | Purpose |
 |-------------------|---------|
-| `/var/lib/pi-api/state.json` | Identity: `{ deviceId, claimSecret, state }` |
-| `/opt/pi-api/credentials.creds` | NATS credentials after pairing |
-| `/opt/pi-api/.env` | NATS config for the worker (+ optional `CLOUD_BASE_URL`) |
+| `/var/lib/dkgm-agent/state.json` | Identity: `{ deviceId, claimSecret, state }` |
+| `/opt/dkgm-agent/credentials.creds` | NATS credentials after pairing |
+| `/opt/dkgm-agent/.env` | NATS config for the worker (+ optional `CLOUD_BASE_URL`) |
 
 Local development (macOS / Windows):
 
 | Path | Purpose |
 |------|---------|
-| `.pi-api-runtime/state.json` | Identity state |
-| `.pi-api-runtime/credentials.creds` | Creds |
-| `.pi-api-runtime/.env` | Generated NATS config |
+| `.dkgm-agent-runtime/state.json` | Identity state |
+| `.dkgm-agent-runtime/credentials.creds` | Creds |
+| `.dkgm-agent-runtime/.env` | Generated NATS config |
 
 ## LAN portal (Pi)
 
@@ -231,12 +231,12 @@ from `deviceId` (and accepts optional overrides if present):
 
 No dedicated reset script in the repo yet. On the device (as root), roughly:
 
-1. `systemctl stop pi-api` (stops portal + worker child)
-2. Remove `/opt/pi-api/credentials.creds`
-3. Wipe and recreate `/var/lib/pi-api` (new identity on next portal start)
-4. `systemctl start pi-api`
+1. `systemctl stop dkgm-agent` (stops portal + worker child)
+2. Remove `/opt/dkgm-agent/credentials.creds`
+3. Wipe and recreate `/var/lib/dkgm-agent` (new identity on next portal start)
+4. `systemctl start dkgm-agent`
 
-Note: `/opt/pi-api/.env` need not be wiped (e.g. `CLOUD_BASE_URL` can remain).
+Note: `/opt/dkgm-agent/.env` need not be wiped (e.g. `CLOUD_BASE_URL` can remain).
 New pairing overwrites NATS keys when bootstrap succeeds.
 
 ## Security checklist

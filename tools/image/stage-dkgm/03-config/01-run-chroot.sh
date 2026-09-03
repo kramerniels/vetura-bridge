@@ -1,3 +1,3 @@
 #!/bin/bash -e
-chown pi-api:pi-api /opt/pi-api/.env
-chmod 600 /opt/pi-api/.env
+chown dkgm-agent:dkgm-agent /opt/dkgm-agent/.env
+chmod 600 /opt/dkgm-agent/.env

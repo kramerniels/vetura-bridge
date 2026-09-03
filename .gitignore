@@ -3,7 +3,8 @@ node_modules/
 *.creds
 credentials.creds
 *.log
-.pi-api-runtime/
+.dkgm-agent-runtime/
+.DS_Store
 
 # pi-gen image build (tools/image)
 tools/image/.pi-gen/
@@ -11,5 +12,5 @@ tools/image/deploy/
 tools/image/.config.merged
 tools/image/config.local
 tools/image/.dkgm-sb-key.pem
-tools/image/stage-dkgm/02-pi-api/files/*
-!tools/image/stage-dkgm/02-pi-api/files/.gitkeep
+tools/image/stage-dkgm/02-dkgm-agent/files/*
+!tools/image/stage-dkgm/02-dkgm-agent/files/.gitkeep

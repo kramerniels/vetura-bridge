@@ -7,8 +7,8 @@ const PACKAGE_ROOT = path.join(__dirname, "../..");
 const WORKER_SCRIPT = path.join(__dirname, "../worker/main.js");
 const APP_DIR =
     process.platform === "darwin" || process.platform === "win32"
-        ? path.join(process.cwd(), ".pi-api-runtime")
-        : "/opt/pi-api";
+        ? path.join(process.cwd(), ".dkgm-agent-runtime")
+        : "/opt/dkgm-agent";
 const ENV_FILE = path.join(APP_DIR, ".env");
 
 const STOP_TIMEOUT_MS = 5000;

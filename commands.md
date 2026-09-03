@@ -112,13 +112,13 @@ Example success `result`:
 
 ### `update`
 
-Replaces the application tree at `/opt/pi-api` from an HTTPS zip download (no
+Replaces the application tree at `/opt/dkgm-agent` from an HTTPS zip download (no
 git on the device). Preserves `.env` and `credentials.creds`. On success schedules
-`systemctl restart pi-api` so portal + worker load the new code; helpers/sudoers/
+`systemctl restart dkgm-agent` so portal + worker load the new code; helpers/sudoers/
 unit are re-synced on the next start (see [Maintenance helpers](#maintenance-helpers)).
 
 ```json
-{ "url": "https://example.com/releases/pi-api-2.1.0.zip" }
+{ "url": "https://example.com/releases/dkgm-agent-2.1.0.zip" }
 ```
 
 | Field | Rules |
@@ -143,7 +143,7 @@ The worker does not enforce an exclusive lock in v1. Resume other commands after
 the matching `results` / `errors` message (or a cloud-side timeout).
 
 **Rollback:** if the swap fails after moving the live tree aside, the helper
-restores `/opt/pi-api.previous` → `/opt/pi-api`. After a successful swap the
+restores `/opt/dkgm-agent.previous` → `/opt/dkgm-agent`. After a successful swap the
 previous tree is deleted to free disk.
 
 #### Packaging the release zip
@@ -154,10 +154,10 @@ Include at least:
 
 | Path | Required |
 |------|----------|
-| `package.json` | yes (`"name": "pi-api"`) |
+| `package.json` | yes (`"name": "dkgm-agent"`) |
 | `package-lock.json` | recommended |
 | `src/` | yes |
-| `deploy/` | yes (helpers, `sync-helpers.sh`, `pi-api.service`, `sudoers-pi-api`) |
+| `packaging/` | yes (helpers, `sync-helpers.sh`, `dkgm-agent.service`, `sudoers-dkgm-agent`) |
 | `node_modules/` | yes — install with `npm ci --omit=dev` before zipping |
 
 Do **not** include `.env`, `credentials.creds`, `.git`, or `tools/` (dev-only).
@@ -166,7 +166,7 @@ Example:
 
 ```bash
 npm ci --omit=dev
-zip -r "pi-api-${VERSION}.zip" package.json package-lock.json src deploy node_modules
+zip -r "dkgm-agent-${VERSION}.zip" package.json package-lock.json src packaging node_modules
 # Upload the artifact; cloud sends the HTTPS URL via commands.<deviceId>.update
 ```
 
@@ -232,30 +232,30 @@ is no JetStream stream sequence):
 
 ## Maintenance helpers
 
-The worker runs as `pi-api` and calls fixed root helpers via sudo (`sudo -n`):
+The worker runs as `dkgm-agent` and calls fixed root helpers via sudo (`sudo -n`):
 
 | Helper | Command |
 |--------|---------|
-| `/usr/local/sbin/pi-api-system-update` | `systemUpdate` |
-| `/usr/local/sbin/pi-api-system-reboot` | `systemReboot` |
-| `/usr/local/sbin/pi-api-app-update` | `update` |
+| `/usr/local/sbin/dkgm-agent-system-update` | `systemUpdate` |
+| `/usr/local/sbin/dkgm-agent-system-reboot` | `systemReboot` |
+| `/usr/local/sbin/dkgm-agent-app-update` | `update` |
 
 Helpers, sudoers, and the systemd unit are **synced automatically** on every
 portal start by:
 
 ```ini
-ExecStartPre=+/opt/pi-api/deploy/sync-helpers.sh
+ExecStartPre=+/opt/dkgm-agent/packaging/sync-helpers.sh
 ```
 
 (`+` = run as root). That script installs:
 
-1. `deploy/helpers/*` → `/usr/local/sbin/` (mode `0755`, `root:root`)
-2. `deploy/sudoers-pi-api` → `/etc/sudoers.d/pi-api` (validated with `visudo -cf`, mode `0440`)
-3. `deploy/pi-api.service` → `/etc/systemd/system/pi-api.service` + `systemctl daemon-reload`
+1. `packaging/helpers/*` → `/usr/local/sbin/` (mode `0755`, `root:root`)
+2. `packaging/sudoers-dkgm-agent` → `/etc/sudoers.d/dkgm-agent` (validated with `visudo -cf`, mode `0440`)
+3. `packaging/dkgm-agent.service` → `/etc/systemd/system/dkgm-agent.service` + `systemctl daemon-reload`
 
 So the first boot after the golden image (or every restart after an OTA
 `update`) picks up new helpers without a manual copy step. The image build
-places the package at `/opt/pi-api` and enables the unit
+places the package at `/opt/dkgm-agent` and enables the unit
 ([tools/image/README.md](./tools/image/README.md)); after that, sync keeps the
 rest current. Unit context:
 [README.md — systemd](./README.md#systemd-production-on-the-pi).
@@ -265,7 +265,7 @@ block sudo/`apt`). `AmbientCapabilities=CAP_NET_BIND_SERVICE` remains for port
 80. Sudoers allows only:
 
 ```text
-pi-api ALL=(root) NOPASSWD: /usr/local/sbin/pi-api-system-update, /usr/local/sbin/pi-api-system-reboot, /usr/local/sbin/pi-api-app-update
+dkgm-agent ALL=(root) NOPASSWD: /usr/local/sbin/dkgm-agent-system-update, /usr/local/sbin/dkgm-agent-system-reboot, /usr/local/sbin/dkgm-agent-app-update
 ```
 
 ## Related

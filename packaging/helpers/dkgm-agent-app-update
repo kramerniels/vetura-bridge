@@ -1,14 +1,14 @@
 #!/bin/sh
 # Root helper for NATS command update (app OTA).
-# Install: synced to /usr/local/sbin/ by deploy/sync-helpers.sh.
+# Install: synced to /usr/local/sbin/ by packaging/sync-helpers.sh.
 # Zip must include node_modules; no npm ci on device.
 set -eu
 
 URL="${1:-}"
-APP_DIR="/opt/pi-api"
-PREV_DIR="/opt/pi-api.previous"
-SERVICE_USER="pi-api"
-SERVICE_GROUP="pi-api"
+APP_DIR="/opt/dkgm-agent"
+PREV_DIR="/opt/dkgm-agent.previous"
+SERVICE_USER="dkgm-agent"
+SERVICE_GROUP="dkgm-agent"
 
 json_escape() {
     printf '%s' "$1" | tr '\n' ' ' | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'
@@ -34,7 +34,7 @@ case "${URL}" in
 esac
 
 started=$(date +%s)
-work=$(mktemp -d /var/tmp/pi-api-update.XXXXXX)
+work=$(mktemp -d /var/tmp/dkgm-agent-update.XXXXXX)
 trap 'rm -rf "${work}"' EXIT
 
 preserve="${work}/preserve"
@@ -58,7 +58,7 @@ fi
 [ -d "${content_root}/node_modules" ] || fail "Missing node_modules in zip (required; no npm ci on device)"
 
 pkg_name=$(node -pe 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).name || ""' "${content_root}/package.json")
-[ "${pkg_name}" = "pi-api" ] || fail "package.json name must be pi-api (got: ${pkg_name:-empty})"
+[ "${pkg_name}" = "dkgm-agent" ] || fail "package.json name must be dkgm-agent (got: ${pkg_name:-empty})"
 
 version=$(node -pe 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).version || "unknown"' "${content_root}/package.json")
 
@@ -98,12 +98,12 @@ if ! chown -R "${SERVICE_USER}:${SERVICE_GROUP}" "${APP_DIR}"; then
     fail "chown failed; restored previous tree"
 fi
 
-# Ensure deploy scripts are executable
-if [ -f "${APP_DIR}/deploy/sync-helpers.sh" ]; then
-    chmod 0755 "${APP_DIR}/deploy/sync-helpers.sh" || true
+# Ensure packaging scripts are executable
+if [ -f "${APP_DIR}/packaging/sync-helpers.sh" ]; then
+    chmod 0755 "${APP_DIR}/packaging/sync-helpers.sh" || true
 fi
-if [ -d "${APP_DIR}/deploy/helpers" ]; then
-    chmod 0755 "${APP_DIR}/deploy/helpers/"* 2>/dev/null || true
+if [ -d "${APP_DIR}/packaging/helpers" ]; then
+    chmod 0755 "${APP_DIR}/packaging/helpers/"* 2>/dev/null || true
 fi
 
 # Success: drop previous tree to free disk
@@ -115,5 +115,5 @@ printf '{"ok":true,"version":"%s","restartScheduled":true,"durationMs":%s}\n' \
     "$(json_escape "${version}")" "${duration_ms}"
 
 # Defer restart so the worker can publish results and ack NATS.
-( sleep 3; /bin/systemctl restart pi-api ) >/dev/null 2>&1 &
+( sleep 3; /bin/systemctl restart dkgm-agent ) >/dev/null 2>&1 &
 exit 0

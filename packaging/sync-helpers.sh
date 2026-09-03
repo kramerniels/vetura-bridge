@@ -3,13 +3,13 @@
 # Runs as root via systemd ExecStartPre=+… before the portal starts.
 set -eu
 
-APP_DIR="/opt/pi-api"
-HELPERS_SRC="${APP_DIR}/deploy/helpers"
-SUDOERS_SRC="${APP_DIR}/deploy/sudoers-pi-api"
-UNIT_SRC="${APP_DIR}/deploy/pi-api.service"
+APP_DIR="/opt/dkgm-agent"
+HELPERS_SRC="${APP_DIR}/packaging/helpers"
+SUDOERS_SRC="${APP_DIR}/packaging/sudoers-dkgm-agent"
+UNIT_SRC="${APP_DIR}/packaging/dkgm-agent.service"
 SBIN_DIR="/usr/local/sbin"
-SUDOERS_DST="/etc/sudoers.d/pi-api"
-UNIT_DST="/etc/systemd/system/pi-api.service"
+SUDOERS_DST="/etc/sudoers.d/dkgm-agent"
+UNIT_DST="/etc/systemd/system/dkgm-agent.service"
 
 if [ "$(id -u)" -ne 0 ]; then
     echo "sync-helpers.sh must run as root" >&2

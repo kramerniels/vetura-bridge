@@ -6,5 +6,5 @@ Dev only — not deployed to the Pi.
 ```bash
 npm start
 # → http://0.0.0.0:3457
-# Set CLOUD_BASE_URL=http://<lan-ip>:3457 on pi-api, then npm start from repo root
+# Set CLOUD_BASE_URL=http://<lan-ip>:3457 on dkgm-agent, then npm start from repo root
 ```

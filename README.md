@@ -1,8 +1,9 @@
-# pi-api
+# dkgm-agent
 
 Raspberry Pi app for DKGM: LAN portal (setup / status) plus a NATS JetStream
-worker for remote commands. This repository **is** the `pi-api` package (deployed
-to `/opt/pi-api` on the device). Local-only helpers live under `tools/`.
+worker for remote commands. This repository **is** the `dkgm-agent` package
+(installed to `/opt/dkgm-agent` on the device). Local-only helpers live under
+`tools/`.
 
 | Doc | Audience |
 |-----|----------|
@@ -17,7 +18,7 @@ Entry point: `src/portal/index.js` (`npm start`).
 ```text
 .
 ├── src/                 # portal + NATS worker
-├── deploy/              # systemd unit, helpers (runtime + OTA)
+├── packaging/           # systemd unit, helpers (runtime + OTA)
 ├── tools/
 │   ├── image/           # pi-gen golden SD image (first install)
 │   └── pairing-mock/    # local cloud pairing API (dev only)
@@ -61,7 +62,7 @@ Reachable via Pi IP or mDNS: `http://dkgm-<shortId>.local/`
 4. Start HTTP server (`createSetupServer`)
 5. On SIGINT/SIGTERM → stop cloud loop, stop worker, close server
 
-Required env for QR pairing: `CLOUD_BASE_URL` (in `/opt/pi-api/.env` or local
+Required env for QR pairing: `CLOUD_BASE_URL` (in `/opt/dkgm-agent/.env` or local
 `.env`). Without that URL, manual setup remains available; the QR is missing.
 
 ## Modules
@@ -165,9 +166,9 @@ Default NATS names come from `src/device-nats.js`:
 
 | | Production (Linux) | Dev (macOS/Windows) |
 |--|--------------------|---------------------|
-| Identity | `/var/lib/pi-api/state.json` | `.pi-api-runtime/state.json` |
-| Creds | `/opt/pi-api/credentials.creds` | `.pi-api-runtime/credentials.creds` |
-| Env | `/opt/pi-api/.env` | `.pi-api-runtime/.env` |
+| Identity | `/var/lib/dkgm-agent/state.json` | `.dkgm-agent-runtime/state.json` |
+| Creds | `/opt/dkgm-agent/credentials.creds` | `.dkgm-agent-runtime/credentials.creds` |
+| Env | `/opt/dkgm-agent/.env` | `.dkgm-agent-runtime/.env` |
 
 ## Frontend
 
@@ -188,7 +189,7 @@ For the app itself there is **one** long-running unit: the portal.
 
 | Unit | Role |
 |------|------|
-| `pi-api` | Starts the portal and keeps it running |
+| `dkgm-agent` | Starts the portal and keeps it running |
 
 The portal itself starts the NATS worker when the device is paired, and restarts
 that worker if it exits. systemd does not manage the worker separately — if the
@@ -196,10 +197,10 @@ portal stops, the worker stops with it (and comes back when systemd restarts the
 portal).
 
 The recipe for that service lives in
-[`deploy/pi-api.service`](./deploy/pi-api.service)
+[`packaging/dkgm-agent.service`](./packaging/dkgm-agent.service)
 (`ExecStart` points at `src/portal/index.js`).
 
-Before the portal starts, `ExecStartPre=+/opt/pi-api/deploy/sync-helpers.sh`
+Before the portal starts, `ExecStartPre=+/opt/dkgm-agent/packaging/sync-helpers.sh`
 (as root) installs maintenance helpers, sudoers, and refreshes this unit from
 the package tree. See [commands.md — Maintenance helpers](./commands.md#maintenance-helpers)
 and the `update` command for OTA app updates.

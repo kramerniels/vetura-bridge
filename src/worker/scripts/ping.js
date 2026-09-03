@@ -26,7 +26,7 @@ function packageVersion() {
 }
 
 function installDir() {
-    if (fs.existsSync("/opt/pi-api")) return "/opt/pi-api";
+    if (fs.existsSync("/opt/dkgm-agent")) return "/opt/dkgm-agent";
     return process.cwd();
 }
 

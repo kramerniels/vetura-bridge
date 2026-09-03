@@ -9,7 +9,7 @@ PIGEN_REPO="${PIGEN_REPO:-https://github.com/RPi-Distro/pi-gen.git}"
 PIGEN_BRANCH="${PIGEN_BRANCH:-arm64}"
 STAGE_SRC="${SCRIPT_DIR}/stage-dkgm"
 STAGE_DST="${PIGEN_DIR}/stage-dkgm"
-PACKAGE_FILES="${STAGE_SRC}/02-pi-api/files"
+PACKAGE_FILES="${STAGE_SRC}/02-dkgm-agent/files"
 OUT_DIR="${SCRIPT_DIR}/deploy"
 
 if ! command -v docker >/dev/null 2>&1; then
@@ -59,7 +59,7 @@ echo "==> Preparing product package for the image stage"
 rm -rf "${PACKAGE_FILES}"
 mkdir -p "${PACKAGE_FILES}"
 printf '%s\n' '# Populated by build.sh — do not commit package contents.' > "${PACKAGE_FILES}/.gitkeep"
-for path in package.json package-lock.json src deploy; do
+for path in package.json package-lock.json src packaging; do
   if [[ -e "${REPO_ROOT}/${path}" ]]; then
     cp -a "${REPO_ROOT}/${path}" "${PACKAGE_FILES}/${path}"
   fi
