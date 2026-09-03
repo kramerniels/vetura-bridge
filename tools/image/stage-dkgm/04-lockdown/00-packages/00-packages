@@ -1,0 +1,9 @@
+cryptsetup
+cryptsetup-initramfs
+e2fsprogs
+busybox
+rpi-eeprom
+dosfstools
+mtools
+xxd
+rpifwcrypto

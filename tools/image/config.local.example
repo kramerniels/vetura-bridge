@@ -3,7 +3,16 @@
 # Required for QR pairing on first boot
 export CLOUD_BASE_URL='https://your-cloud-app.example.com'
 
-# First-user login (required when DISABLE_FIRST_BOOT_USER_RENAME=1)
+# Support SSH: public key only (private key never goes on the SD card).
+# Build fails without this. One fleet key: a leak opens every device.
+PUBKEY_SSH_FIRST_USER='ssh-ed25519 AAAA... support@dkgm'
+PUBKEY_ONLY_SSH=1
+
+# Required by pi-gen; build.sh replaces "change-me" with a random value.
+# Not a login password — PasswordAuthentication is disabled.
 FIRST_USER_PASS='change-me'
-# PUBKEY_SSH_FIRST_USER='ssh-ed25519 AAAA... your@host'
-# PUBKEY_ONLY_SSH=1
+
+# RSA 2048 PEM used to sign boot.img (and pieeprom if tooling allows).
+# Generate: openssl genrsa 2048 > secure-boot.pem
+# Keep this file offline; never copy it into the image.
+SECURE_BOOT_KEY='/absolute/path/to/secure-boot.pem'

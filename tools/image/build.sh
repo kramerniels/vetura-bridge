@@ -24,8 +24,35 @@ fi
 
 if [[ ! -f "${SCRIPT_DIR}/config.local" ]]; then
   echo "Missing ${SCRIPT_DIR}/config.local" >&2
-  echo "Copy config.local.example → config.local and set CLOUD_BASE_URL and FIRST_USER_PASS." >&2
+  echo "Copy config.local.example → config.local and set CLOUD_BASE_URL, PUBKEY_SSH_FIRST_USER, SECURE_BOOT_KEY." >&2
   exit 1
+fi
+
+# shellcheck disable=SC1091
+set -a
+# Shared defaults then secrets. config.local is gitignored.
+# shellcheck source=/dev/null
+source "${SCRIPT_DIR}/config"
+# shellcheck source=/dev/null
+source "${SCRIPT_DIR}/config.local"
+set +a
+
+if [[ -z "${PUBKEY_SSH_FIRST_USER:-}" ]]; then
+  echo "PUBKEY_SSH_FIRST_USER is required in config.local (support SSH public key)." >&2
+  exit 1
+fi
+if [[ "${PUBKEY_ONLY_SSH:-}" != "1" ]]; then
+  echo "PUBKEY_ONLY_SSH=1 is required in config.local." >&2
+  exit 1
+fi
+if [[ -z "${SECURE_BOOT_KEY:-}" || ! -f "${SECURE_BOOT_KEY}" ]]; then
+  echo "SECURE_BOOT_KEY must be a readable RSA 2048 PEM (openssl genrsa 2048 > secure-boot.pem)." >&2
+  exit 1
+fi
+
+if [[ -z "${FIRST_USER_PASS:-}" || "${FIRST_USER_PASS}" == "change-me" ]]; then
+  FIRST_USER_PASS="$(openssl rand -base64 33)"
+  echo "==> Generated random FIRST_USER_PASS (not used for SSH login)"
 fi
 
 echo "==> Preparing product package for the image stage"
@@ -70,11 +97,21 @@ echo "==> Merging config + config.local into pi-gen"
 # Write into the pi-gen tree (not a path outside it). build-docker.sh on macOS does
 # not rewrite -c <hostpath> to /config inside the container (BSD sed has no \s),
 # so ./build.sh would source a Mac path that does not exist in Docker.
+# Trailing assignments override FIRST_USER_PASS if it was randomised above.
 {
   cat "${SCRIPT_DIR}/config"
   echo
   cat "${SCRIPT_DIR}/config.local"
+  echo
+  echo "PUBKEY_ONLY_SSH=1"
+  printf "FIRST_USER_PASS=%q\n" "${FIRST_USER_PASS}"
 } > "${PIGEN_DIR}/config"
+
+# Signing key and digest tool for stage-dkgm/05-secure-boot (never copied into rootfs).
+cp "${SECURE_BOOT_KEY}" "${PIGEN_DIR}/.dkgm-sb-key.pem"
+chmod 600 "${PIGEN_DIR}/.dkgm-sb-key.pem"
+cp "${SCRIPT_DIR}/scripts/rpi-eeprom-digest" "${PIGEN_DIR}/dkgm-rpi-eeprom-digest"
+chmod 755 "${PIGEN_DIR}/dkgm-rpi-eeprom-digest"
 
 mkdir -p "${OUT_DIR}"
 

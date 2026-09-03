@@ -1,0 +1,153 @@
+#!/bin/sh
+# Encrypt root in-place (first boot) or open LUKS (later boots).
+# Runs in initramfs local-premount, so / is not mounted yet.
+PREREQ=""
+prereqs() { echo "${PREREQ}"; }
+case "${1:-}" in
+	prereqs)
+		prereqs
+		exit 0
+		;;
+esac
+
+. /scripts/functions
+
+BOOT_MP=/run/dkgm-boot
+PENDING="${BOOT_MP}/dkgm-encrypt-pending"
+KEYSCRIPT=/usr/lib/dkgm/luks-key
+MAPPER=cryptroot
+
+find_boot_dev() {
+	for cand in /dev/disk/by-label/bootfs /dev/mmcblk0p1 /dev/mmcblk1p1; do
+		if [ -b "${cand}" ] || [ -e "${cand}" ]; then
+			echo "${cand}"
+			return 0
+		fi
+	done
+	return 1
+}
+
+mount_boot() {
+	mkdir -p "${BOOT_MP}"
+	if mountpoint -q "${BOOT_MP}"; then
+		return 0
+	fi
+	bootdev=$(find_boot_dev) || return 1
+	mount -t vfat -o rw "${bootdev}" "${BOOT_MP}" 2>/dev/null \
+		|| mount -o rw "${bootdev}" "${BOOT_MP}"
+}
+
+root_dev_from_cmdline() {
+	# Prefer the kernel root= (PARTUUID=… or /dev/…)
+	for tok in $(cat /proc/cmdline); do
+		case "${tok}" in
+			root=*)
+				echo "${tok#root=}"
+				return 0
+				;;
+		esac
+	done
+	echo /dev/mmcblk0p2
+}
+
+resolve_root_dev() {
+	spec=$(root_dev_from_cmdline)
+	case "${spec}" in
+		/dev/mapper/*) echo "${spec}"; return 0 ;;
+		PARTUUID=*)
+			dev=$(blkid -t "${spec}" -o device 2>/dev/null || true)
+			if [ -n "${dev}" ]; then
+				echo "${dev}"
+				return 0
+			fi
+			;;
+		UUID=*)
+			dev=$(blkid -t "${spec}" -o device 2>/dev/null || true)
+			if [ -n "${dev}" ]; then
+				echo "${dev}"
+				return 0
+			fi
+			;;
+		/dev/*)
+			echo "${spec}"
+			return 0
+			;;
+	esac
+	echo /dev/mmcblk0p2
+}
+
+open_luks() {
+	dev="$1"
+	if [ ! -x "${KEYSCRIPT}" ]; then
+		panic "dkgm-crypt: missing ${KEYSCRIPT}"
+	fi
+	pass=$(${KEYSCRIPT}) || panic "dkgm-crypt: passphrase derivation failed"
+	printf '%s' "${pass}" | cryptsetup open "${dev}" "${MAPPER}" --key-file=- \
+		|| panic "dkgm-crypt: cryptsetup open failed"
+}
+
+encrypt_root() {
+	dev="$1"
+	log_begin_msg "DKGM: encrypting root (several minutes)"
+
+	e2fsck -f -y "${dev}" || true
+
+	# Free space at the end of the device for the LUKS2 header.
+	blocks=$(dumpe2fs -h "${dev}" 2>/dev/null | awk '/Block count/ {print $3}')
+	bsize=$(dumpe2fs -h "${dev}" 2>/dev/null | awk '/Block size/ {print $3}')
+	if [ -n "${blocks}" ] && [ -n "${bsize}" ]; then
+		bytes=$((blocks * bsize))
+		shrink_bytes=$((bytes - 64 * 1024 * 1024))
+		if [ "${shrink_bytes}" -gt 1048576 ]; then
+			resize2fs "${dev}" $((shrink_bytes / 1024))K
+		fi
+	fi
+
+	pass=$(${KEYSCRIPT}) || panic "dkgm-crypt: passphrase derivation failed"
+	printf '%s' "${pass}" | cryptsetup reencrypt --encrypt --type luks2 \
+		--reduce-device-size 32M --batch-mode --key-file=- "${dev}" \
+		|| panic "dkgm-crypt: LUKS encrypt failed"
+
+	printf '%s' "${pass}" | cryptsetup open "${dev}" "${MAPPER}" --key-file=- \
+		|| panic "dkgm-crypt: open after encrypt failed"
+
+	mkdir -p /run/dkgm-root
+	mount -t ext4 "/dev/mapper/${MAPPER}" /run/dkgm-root \
+		|| panic "dkgm-crypt: mount after encrypt failed"
+
+	if [ -f /run/dkgm-root/etc/fstab ]; then
+		sed -i -E 's|^[^#][^[:space:]]+[[:space:]]+/[[:space:]]|/dev/mapper/cryptroot / |' \
+			/run/dkgm-root/etc/fstab
+	fi
+
+	umount /run/dkgm-root
+	cryptsetup close "${MAPPER}" || true
+
+	if [ -f "${BOOT_MP}/cmdline.txt" ]; then
+		# Drop resize; point root at the mapper; keep PARTUUID source via cryptdevice.
+		sed -i -E 's/[[:space:]]*resize//g' "${BOOT_MP}/cmdline.txt"
+		sed -i -E "s|root=[^[:space:]]+|root=/dev/mapper/${MAPPER} cryptdevice=${dev}:${MAPPER}|" \
+			"${BOOT_MP}/cmdline.txt"
+	fi
+
+	rm -f "${PENDING}"
+	printf '%s\n' "secure-boot" >"${BOOT_MP}/dkgm-provision-next"
+	sync
+	log_end_msg
+	umount "${BOOT_MP}" 2>/dev/null || true
+	reboot -f
+}
+
+dev=$(resolve_root_dev)
+
+if mount_boot && [ -f "${PENDING}" ]; then
+	encrypt_root "${dev}"
+fi
+
+type=$(blkid -o value -s TYPE "${dev}" 2>/dev/null || true)
+if [ "${type}" = "crypto_LUKS" ]; then
+	if [ ! -e "/dev/mapper/${MAPPER}" ]; then
+		open_luks "${dev}"
+	fi
+	# Initramfs local_mount_root uses ROOT from cmdline (updated at encrypt).
+fi

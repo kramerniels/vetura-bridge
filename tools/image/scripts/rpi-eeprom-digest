@@ -1,0 +1,42 @@
+#!/bin/sh
+# Minimal rpi-eeprom-digest compatible signer (sha256 + ts + rsa2048 PKCS#1 v1.5).
+# See https://github.com/raspberrypi/rpi-eeprom/blob/master/rpi-eeprom-digest
+set -eu
+
+IMAGE=""
+KEY=""
+OUTPUT=""
+
+usage() {
+	echo "usage: $0 -i <image> -o <out.sig> -k <private.pem>" >&2
+	exit 1
+}
+
+while getopts i:k:o:h opt; do
+	case "${opt}" in
+		i) IMAGE="${OPTARG}" ;;
+		k) KEY="${OPTARG}" ;;
+		o) OUTPUT="${OPTARG}" ;;
+		*) usage ;;
+	esac
+done
+
+[ -n "${IMAGE}" ] && [ -n "${KEY}" ] && [ -n "${OUTPUT}" ] || usage
+[ -f "${IMAGE}" ] || { echo "missing image: ${IMAGE}" >&2; exit 1; }
+[ -f "${KEY}" ] || { echo "missing key: ${KEY}" >&2; exit 1; }
+
+if ! command -v xxd >/dev/null 2>&1; then
+	hex() { python3 -c 'import sys; print(sys.stdin.buffer.read().hex())'; }
+else
+	hex() { xxd -c 4096 -p | tr -d '\n'; }
+fi
+
+hash=$(sha256sum "${IMAGE}" | awk '{print $1}')
+ts=$(date -u +%s)
+sig_hex=$(openssl dgst -sha256 -sign "${KEY}" -binary "${IMAGE}" | hex)
+
+{
+	echo "sha256: ${hash}"
+	echo "ts: ${ts}"
+	echo "rsa2048: ${sig_hex}"
+} >"${OUTPUT}"

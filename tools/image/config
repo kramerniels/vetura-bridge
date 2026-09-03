@@ -12,7 +12,8 @@ KEYBOARD_LAYOUT='English (US)'
 TIMEZONE_DEFAULT='Europe/Amsterdam'
 
 ENABLE_SSH=1
-# Set FIRST_USER_PASS (and ideally PUBKEY_SSH_FIRST_USER) in config.local
+# SSH is pubkey-only. Set PUBKEY_SSH_FIRST_USER and PUBKEY_ONLY_SSH=1 in config.local.
+# FIRST_USER_PASS is required by pi-gen but is not used for login (build.sh randomises it).
 FIRST_USER_NAME='dkgm'
 DISABLE_FIRST_BOOT_USER_RENAME=1
 PASSWORDLESS_SUDO=1

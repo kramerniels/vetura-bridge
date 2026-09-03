@@ -28,8 +28,8 @@ Entry point: `src/portal/index.js` (`npm start`).
 ## Install on a Raspberry Pi
 
 Flash the golden image — that is the only first-install path. See
-[tools/image/README.md](./tools/image/README.md) (pi-gen build, config, flash,
-first boot / QR pairing). App updates after pairing go over NATS
+[tools/image/README.md](./tools/image/README.md) (Pi 5, pubkey-only SSH, first-boot
+LUKS + signed boot, then QR pairing). App updates after pairing go over NATS
 ([commands.md](./commands.md)).
 
 ## Role

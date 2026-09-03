@@ -10,5 +10,6 @@ tools/image/.pi-gen/
 tools/image/deploy/
 tools/image/.config.merged
 tools/image/config.local
+tools/image/.dkgm-sb-key.pem
 tools/image/stage-dkgm/02-pi-api/files/*
 !tools/image/stage-dkgm/02-pi-api/files/.gitkeep

@@ -1,0 +1,15 @@
+[Unit]
+Description=DKGM first-boot LUKS and signed-boot provision
+DefaultDependencies=no
+After=local-fs.target rpi-resize.service
+Before=pi-api.service
+ConditionPathExists=!/boot/firmware/dkgm-provision.done
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/dkgm/dkgm-provision
+TimeoutStartSec=120
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
