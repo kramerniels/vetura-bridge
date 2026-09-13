@@ -34,8 +34,8 @@ works. See the [pi-gen README](https://github.com/RPi-Distro/pi-gen).
 # SSH support key (private key stays on the support laptop; never on the SD)
 ssh-keygen -t ed25519 -f ~/.ssh/dkgm-support -N ""
 # Secure-boot signing key (RSA 2048). Back this up; losing it bricks signed devices.
-openssl genrsa 2048 > ~/.dkgm-secure-boot.pem
-chmod 600 ~/.dkgm-secure-boot.pem
+openssl genrsa 2048 > ./.dkgm-secure-boot.pem
+chmod 600 ./.dkgm-secure-boot.pem
 
 cd tools/image
 cp config.local.example config.local

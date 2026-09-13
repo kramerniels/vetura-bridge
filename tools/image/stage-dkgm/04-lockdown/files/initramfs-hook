@@ -1,0 +1,55 @@
+#!/bin/sh
+# initramfs-tools hook: cryptsetup, e2fsprogs, rpi-fw-crypto, LUKS keyscript.
+# Must end with exit 0: mkinitramfs treats any non-zero status as fatal.
+PREREQ=""
+prereqs() { echo "${PREREQ}"; }
+case "${1:-}" in
+	prereqs)
+		prereqs
+		exit 0
+		;;
+esac
+
+. /usr/share/initramfs-tools/hook-functions
+
+copy_bin() {
+	_name="$1"
+	shift
+	for _src in "$@"; do
+		if [ -x "${_src}" ]; then
+			copy_exec "${_src}" || return 1
+			return 0
+		fi
+	done
+	echo "dkgm-crypt hook: ${_name} not found (tried: $*)" >&2
+	return 1
+}
+
+copy_bin cryptsetup /usr/sbin/cryptsetup /sbin/cryptsetup || exit 1
+copy_bin resize2fs /usr/sbin/resize2fs /sbin/resize2fs || exit 1
+copy_bin e2fsck /usr/sbin/e2fsck /sbin/e2fsck || exit 1
+copy_bin dumpe2fs /usr/sbin/dumpe2fs /sbin/dumpe2fs || exit 1
+copy_bin blkid /usr/sbin/blkid /sbin/blkid || exit 1
+copy_bin rpi-fw-crypto /usr/bin/rpi-fw-crypto /usr/sbin/rpi-fw-crypto || exit 1
+
+# Busybox already provides reboot in the initramfs; do not copy systemd's
+# /usr/sbin/reboot -> systemctl (heavy, and copy_exec can fail on it).
+
+if [ ! -x /usr/lib/dkgm/luks-key ]; then
+	echo "dkgm-crypt hook: missing /usr/lib/dkgm/luks-key" >&2
+	exit 1
+fi
+copy_exec /usr/lib/dkgm/luks-key || exit 1
+
+# Optional mailbox udev rules. copy_file returns 1 when the file is already
+# in the image; unmatched globs must not become this script's exit status.
+for dir in /usr/lib/udev/rules.d /lib/udev/rules.d; do
+	[ -d "${dir}" ] || continue
+	for node in "${dir}"/*vcio* "${dir}"/*fw-crypto* "${dir}"/*rpifw*; do
+		if [ -f "${node}" ]; then
+			copy_file udev "${node}" || true
+		fi
+	done
+done
+
+exit 0
