@@ -7,11 +7,14 @@ credentials.creds
 .dkgm-agent-runtime/
 .DS_Store
 
+# Private keys never go in git; public halves live in tools/image/keys/
+*.pem
+!*.pub.pem
+
 # pi-gen image build (tools/image)
 tools/image/.pi-gen/
 tools/image/deploy/
 tools/image/.config.merged
 tools/image/config.local
-tools/image/*.pem
 tools/image/stage-vetura/02-vetura-agent/files/*
 !tools/image/stage-vetura/02-vetura-agent/files/.gitkeep

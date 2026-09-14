@@ -11,6 +11,9 @@ portal, and root is **LUKS** bound to this Pi + this SD card. Signed
 the EEPROM; a **production** image enables `SIGNED_BOOT` on first boot. There
 is no overlay filesystem.
 
+There is one image per environment (`staging`, `production`), each signed with
+its own key. CI builds them on push (see [CI](#ci)).
+
 | Included | Not included (per device) |
 |----------|---------------------------|
 | Raspberry Pi OS Lite 64-bit (Trixie), Pi 5 | `/var/lib/vetura-agent/state.json` |
@@ -37,9 +40,6 @@ works. See the [pi-gen README](https://github.com/RPi-Distro/pi-gen).
 ```bash
 # SSH support key (private key stays on the support laptop; never on the SD)
 ssh-keygen -t ed25519 -f ~/.ssh/vetura-support -N ""
-# Secure-boot signing key (RSA 2048). Back this up; losing it bricks signed devices.
-openssl genrsa 2048 > ./.vetura-secure-boot.pem
-chmod 600 ./.vetura-secure-boot.pem
 
 cd tools/image
 cp config.local.example config.local
@@ -49,7 +49,7 @@ cp config.local.example config.local
 #   PRODUCTION_CLOUD_API_URL / PRODUCTION_CLOUD_FRONTEND_URL
 #   PUBKEY_SSH_FIRST_USER='ssh-ed25519 AAAA... support@vetura'
 #   PUBKEY_ONLY_SSH=1
-#   SECURE_BOOT_KEY='/Users/you/.vetura-secure-boot.pem'
+#   SECURE_BOOT_KEY='/Users/you/.vetura-bridge/secure-boot-staging.pem'
 ```
 
 `FIRST_USER_PASS` is required by pi-gen. `build.sh` replaces `change-me` with a
@@ -60,8 +60,27 @@ One public key is baked into every card. If that **private** SSH key leaks, ever
 device is reachable. Rotate by installing a new `authorized_keys` over SSH (or
 a new image) and retiring the old key.
 
-The signing PEM is used only on the build machine. It is never copied into the
-rootfs.
+### Signing keys
+
+Staging and production each have their own RSA 2048 secure-boot key. A Pi only
+boots images signed with the key it was provisioned with, so a staging device
+never runs a production image, and the other way around.
+
+- The public keys are committed in [`keys/`](./keys/) (`staging.pub.pem`,
+  `production.pub.pem`). `build.sh` refuses to build when `SECURE_BOOT_KEY` is
+  not the private key of `keys/<IMAGE_ENV>.pub.pem`.
+- The private keys **never** go in git (this repository is public). They live in
+  the GitHub environment secrets and in an offline backup: GitHub secrets cannot
+  be read back, and losing a key means its devices never get a new signed boot image.
+- The signing PEM is used only on the build machine. It is never copied into the
+  rootfs.
+
+New key for an environment (devices already provisioned keep requiring the old one):
+
+```bash
+openssl genrsa -out secure-boot-staging.pem 2048
+openssl pkey -in secure-boot-staging.pem -pubout -out tools/image/keys/staging.pub.pem
+```
 
 ## Build
 
@@ -131,6 +150,29 @@ Flashing a production image **without** that pubkey stops at Error 12. Recover
 with Raspberry Pi Imager → Misc utility images → Bootloader (Pi 5 family)
 **unless** OTP is already fused. Do not use a production image on a debug Pi.
 
+## CI
+
+[`.github/workflows/image.yml`](../../.github/workflows/image.yml) runs `build.sh`
+on GitHub's arm64 runners when app or image files change:
+
+- push to any branch: `staging` image
+- push to `main`: `staging` and `production` images
+
+Each image is uploaded as a workflow artifact named `vetura-bridge-<env>-<sha>.img.xz`
+and kept for 30 days. This repository is public, so anyone signed in to GitHub can
+download them. The signing and SSH private keys are never part of the image.
+
+Each GitHub environment (**Settings → Environments** → `staging` / `production`) needs:
+
+| Name | Kind | Value |
+|------|------|-------|
+| `CLOUD_BASE_URL` | variable | Online app URL of that environment |
+| `SUPPORT_SSH_PUBKEY` | variable | Support SSH public key (`ssh-ed25519 AAAA...`) |
+| `SECURE_BOOT_KEY` | secret | Private signing PEM of that environment |
+
+Limit the `production` environment to the `main` branch (**Deployment branches and
+tags**), so no other branch can use its key.
+
 ## Flash and first boot
 
 1. Write the image to an SD card (Raspberry Pi Imager, Etcher, `dd`)
@@ -185,6 +227,7 @@ tools/image/
   build.sh
   config                 # shared pi-gen defaults
   config.local.example   # IMAGE_ENV, cloud URLs, SSH pubkey, signing key path
+  keys/                  # public secure-boot keys (staging, production)
   scripts/rpi-eeprom-digest
   stage-vetura/            # Lite + vetura-agent + lockdown + signed boot.img
   .pi-gen/               # gitignored clone
