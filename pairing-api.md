@@ -35,14 +35,14 @@ Stored in identity state as JSON. Only two values:
 
 | Status | Meaning |
 |--------|---------|
-| `unpaired` | LAN setup UI (QR / manual); poll cloud when `CLOUD_BASE_URL` is set |
+| `unpaired` | LAN setup UI (QR / manual); poll cloud when `CLOUD_API_URL` is set |
 | `paired` | Portal shows status UI; NATS worker runs as a **child of the portal** |
 
 ## User flow
 
 1. Pi boots → identity on disk → systemd starts `dkgm-agent` (portal)
-2. If unpaired and `CLOUD_BASE_URL` is set → register with cloud → show QR + pair URL
-3. User opens `{CLOUD_BASE_URL}/devices/pair?deviceId=...&claim=...` (via QR)
+2. If unpaired and `CLOUD_API_URL` is set → register with cloud → show QR + pair URL
+3. User opens `{CLOUD_FRONTEND_URL}/devices/pair?deviceId=...&claim=...` (via QR)
 4. User logs in on the **online** app and confirms pairing to their tenant
 5. Online app enqueues a provisioning job (Scaleway NATS credentials + JetStream consumer)
 6. Browser shows a waiting state (“Bezig met aanmaken van certificaten…”) and polls device status until `paired` or `failed`
@@ -65,8 +65,10 @@ One long-running systemd unit: **`dkgm-agent`**
 There is no separate worker unit. Full systemd / module detail:
 [README.md](./README.md).
 
-Required env for QR pairing: `CLOUD_BASE_URL` (in `/opt/dkgm-agent/.env` or the
-process environment). Without it, manual setup remains available; no QR.
+Required env for QR pairing: `CLOUD_API_URL` and `CLOUD_FRONTEND_URL` (in
+`/opt/dkgm-agent/.env` or the process environment). Without the API URL the
+cloud loop does not start; without the frontend URL there is no QR. Manual
+setup remains available either way.
 
 ## Pi on-disk layout
 
@@ -74,7 +76,7 @@ process environment). Without it, manual setup remains available; no QR.
 |-------------------|---------|
 | `/var/lib/dkgm-agent/state.json` | Identity: `{ deviceId, claimSecret, state }` |
 | `/opt/dkgm-agent/credentials.creds` | NATS credentials after pairing |
-| `/opt/dkgm-agent/.env` | NATS config for the worker (+ optional `CLOUD_BASE_URL`) |
+| `/opt/dkgm-agent/.env` | NATS config for the worker (+ optional `CLOUD_API_URL` / `CLOUD_FRONTEND_URL`) |
 
 Local development (macOS / Windows):
 
@@ -101,7 +103,7 @@ Full status shape: [README.md](./README.md).
 
 ## Endpoints (cloud)
 
-Base URL: `{CLOUD_BASE_URL}` (HTTPS).
+Base URL: `{CLOUD_API_URL}` (HTTPS).
 
 ### `POST /api/devices/register`
 
@@ -236,7 +238,7 @@ No dedicated reset script in the repo yet. On the device (as root), roughly:
 3. Wipe and recreate `/var/lib/dkgm-agent` (new identity on next portal start)
 4. `systemctl start dkgm-agent`
 
-Note: `/opt/dkgm-agent/.env` need not be wiped (e.g. `CLOUD_BASE_URL` can remain).
+Note: `/opt/dkgm-agent/.env` need not be wiped (e.g. `CLOUD_API_URL` / `CLOUD_FRONTEND_URL` can remain).
 New pairing overwrites NATS keys when bootstrap succeeds.
 
 ## Security checklist

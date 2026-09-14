@@ -24,7 +24,7 @@ fi
 
 if [[ ! -f "${SCRIPT_DIR}/config.local" ]]; then
   echo "Missing ${SCRIPT_DIR}/config.local" >&2
-  echo "Copy config.local.example → config.local and set CLOUD_BASE_URL, PUBKEY_SSH_FIRST_USER, SECURE_BOOT_KEY." >&2
+  echo "Copy config.local.example → config.local and set CLOUD_API_URL, CLOUD_FRONTEND_URL, PUBKEY_SSH_FIRST_USER, SECURE_BOOT_KEY." >&2
   exit 1
 fi
 
@@ -36,6 +36,23 @@ source "${SCRIPT_DIR}/config"
 # shellcheck source=/dev/null
 source "${SCRIPT_DIR}/config.local"
 set +a
+
+if ! grep -qE '^(export[[:space:]]+)?CLOUD_API_URL=' "${SCRIPT_DIR}/config.local"; then
+  echo "CLOUD_API_URL is required in config.local (CLOUD_BASE_URL was renamed)." >&2
+  exit 1
+fi
+if ! grep -qE '^(export[[:space:]]+)?CLOUD_FRONTEND_URL=' "${SCRIPT_DIR}/config.local"; then
+  echo "CLOUD_FRONTEND_URL is required in config.local (QR / pair URL base)." >&2
+  exit 1
+fi
+if [[ -z "${CLOUD_API_URL:-}" ]]; then
+  echo "CLOUD_API_URL is empty — set it in config.local." >&2
+  exit 1
+fi
+if [[ -z "${CLOUD_FRONTEND_URL:-}" ]]; then
+  echo "CLOUD_FRONTEND_URL is empty — set it in config.local." >&2
+  exit 1
+fi
 
 if [[ -z "${PUBKEY_SSH_FIRST_USER:-}" ]]; then
   echo "PUBKEY_SSH_FIRST_USER is required in config.local (support SSH public key)." >&2

@@ -13,7 +13,7 @@ boot** rejects a tweaked boot partition. There is no overlay filesystem.
 | Raspberry Pi OS Lite 64-bit (Trixie), Pi 5 | `/var/lib/dkgm-agent/state.json` |
 | Node.js 20 | `credentials.creds` / NATS pairing |
 | `/opt/dkgm-agent` + systemd `dkgm-agent` enabled | LUKS passphrase (derived from OTP + CID) |
-| `/opt/dkgm-agent/.env` with `CLOUD_BASE_URL` | |
+| `/opt/dkgm-agent/.env` with `CLOUD_API_URL` / `CLOUD_FRONTEND_URL` | |
 | Support SSH authorized_keys (public key only) | Signing **private** key |
 | Signed `boot.img` / `boot.sig` in `/usr/lib/dkgm/secure-boot/` | |
 
@@ -23,7 +23,7 @@ boot** rejects a tweaked boot partition. There is no overlay filesystem.
 - Docker (Linux or macOS; privileged containers + `binfmt` for ARM)
 - Git, OpenSSL
 - Enough disk for pi-gen work dirs (tens of GB)
-- [config.local](./config.local.example) with `CLOUD_BASE_URL`, `PUBKEY_SSH_FIRST_USER`, `SECURE_BOOT_KEY`
+- [config.local](./config.local.example) with `CLOUD_API_URL`, `CLOUD_FRONTEND_URL`, `PUBKEY_SSH_FIRST_USER`, `SECURE_BOOT_KEY`
 
 On Linux you may need `binfmt` / `qemu-user-static` support so the ARM chroot
 works. See the [pi-gen README](https://github.com/RPi-Distro/pi-gen).
@@ -40,7 +40,8 @@ chmod 600 ./.dkgm-secure-boot.pem
 cd tools/image
 cp config.local.example config.local
 # Edit config.local:
-#   CLOUD_BASE_URL
+#   CLOUD_API_URL        # origin/path only, no ?query (agent appends /api/...)
+#   CLOUD_FRONTEND_URL   # origin for QR pair URL (/devices/pair?...)
 #   PUBKEY_SSH_FIRST_USER='ssh-ed25519 AAAA... support@dkgm'
 #   PUBKEY_ONLY_SSH=1
 #   SECURE_BOOT_KEY='/Users/you/.dkgm-secure-boot.pem'
@@ -77,7 +78,9 @@ Output is typically `deploy/dkgm-pi-*.img.xz`.
 ## Flash and first boot
 
 1. Write the image to an SD card (Raspberry Pi Imager, Etcher, `dd`)
-2. Boot a **Pi 5** (Ethernet recommended; Wi‑Fi country is `NL` in `config`)
+2. Boot a **Pi 5** on **Ethernet** (no Wi‑Fi SSID is baked in). HDMI has **no
+   login**: the last systemd line (often `cloud-init.target`) stays on screen.
+   That is not a hang. Find the IP on your router and open `http://<ip>/` or SSH.
 3. First boot takes **several extra minutes** and **reboots more than once**:
    1. OTP device key (one-time, irreversible)
    2. Initramfs LUKS-encrypts the root partition (passphrase = HMAC of OTP key + SD CID)

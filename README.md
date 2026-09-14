@@ -62,8 +62,10 @@ Reachable via Pi IP or mDNS: `http://dkgm-<shortId>.local/`
 4. Start HTTP server (`createSetupServer`)
 5. On SIGINT/SIGTERM → stop cloud loop, stop worker, close server
 
-Required env for QR pairing: `CLOUD_BASE_URL` (in `/opt/dkgm-agent/.env` or local
-`.env`). Without that URL, manual setup remains available; the QR is missing.
+Required env for QR pairing: `CLOUD_API_URL` and `CLOUD_FRONTEND_URL` (in
+`/opt/dkgm-agent/.env` or local `.env`). Without the API URL the cloud loop does
+not start; without the frontend URL the QR is missing. Manual setup remains
+available either way.
 
 ## Modules
 
@@ -135,13 +137,14 @@ reload shows the status page.
 
 `cloud.js` → `startCloudLoop`:
 
-1. Build `pairUrl` = `{CLOUD_BASE_URL}/devices/pair?deviceId=…&claim=…`
-2. `POST /api/devices/register` — retry every **10s** until success
-3. Then `GET /api/devices/:id/bootstrap` with `Authorization: Bearer <claimSecret>` — every **3s**
+1. Build `pairUrl` = `{CLOUD_FRONTEND_URL}/devices/pair?deviceId=…&claim=…`
+2. `POST {CLOUD_API_URL}/api/devices/register` — retry every **10s** until success
+3. Then `GET {CLOUD_API_URL}/api/devices/:id/bootstrap` with `Authorization: Bearer <claimSecret>` — every **3s**
 4. When payload is ready → `configFromBootstrap` + `applyPairing`
 5. On success → cloud loop stops; worker starts; UI sees `paired` via status poll
 
-Without `CLOUD_BASE_URL`: loop does not start; `cloudConfigured: false` and no QR.
+Without `CLOUD_API_URL`: loop does not start; `cloudConfigured: false`.
+Without `CLOUD_FRONTEND_URL`: no QR / pair URL.
 
 ## Applying pairing (`apply.js`)
 
@@ -221,7 +224,8 @@ cd tools/pairing-mock && npm start
 2. Point the portal at it (in `.env` or the process environment):
 
 ```bash
-CLOUD_BASE_URL=http://<your-lan-ip>:3457
+CLOUD_API_URL=http://<your-lan-ip>:3457
+CLOUD_FRONTEND_URL=http://<your-lan-ip>:3457
 ```
 
 3. From the repo root: `npm start`, open `http://localhost:8080`, complete
