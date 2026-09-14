@@ -155,8 +155,8 @@ with Raspberry Pi Imager → Misc utility images → Bootloader (Pi 5 family)
 [`.github/workflows/image.yml`](../../.github/workflows/image.yml) runs `build.sh`
 on GitHub's arm64 runners when app or image files change:
 
-- push to any branch: `staging` image
-- push to `main`: `staging` and `production` images
+- push to `main`: `production` image
+- push to any other branch (e.g. `development`): `staging` image
 
 Each image is uploaded as a workflow artifact named `vetura-bridge-<env>-<sha>.img.xz`
 and kept for 30 days. This repository is public, so anyone signed in to GitHub can

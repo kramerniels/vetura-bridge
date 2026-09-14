@@ -1,5 +1,5 @@
 # Builds the Raspberry Pi golden image with tools/image/build.sh:
-# staging on every push, staging + production on main.
+# production on main, staging on every other branch (e.g. development).
 # Environment setup: tools/image/README.md (CI section).
 name: Image
 
@@ -25,9 +25,8 @@ jobs:
     name: ${{ matrix.env }}
     runs-on: ubuntu-24.04-arm
     strategy:
-      fail-fast: false
       matrix:
-        env: ${{ github.ref == 'refs/heads/main' && fromJSON('["staging", "production"]') || fromJSON('["staging"]') }}
+        env: ${{ github.ref == 'refs/heads/main' && fromJSON('["production"]') || fromJSON('["staging"]') }}
     environment: ${{ matrix.env }}
     steps:
       - uses: actions/checkout@v7
