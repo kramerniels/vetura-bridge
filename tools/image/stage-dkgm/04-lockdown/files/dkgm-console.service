@@ -1,0 +1,12 @@
+[Unit]
+Description=DKGM HDMI status (no getty on this appliance)
+After=network.target
+Wants=dkgm-agent.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/dkgm/console-status
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

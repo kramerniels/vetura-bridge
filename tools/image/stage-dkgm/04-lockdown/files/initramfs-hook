@@ -41,6 +41,18 @@ if [ ! -x /usr/lib/dkgm/luks-key ]; then
 fi
 copy_exec /usr/lib/dkgm/luks-key || exit 1
 
+# Firmware mailbox used by rpi-fw-crypto (/dev/vcio, /dev/vcio_crypto).
+manual_add_modules vcio || true
+for m in dm_mod dm_crypt xts aes_generic aes_ce_cipher aes_ce_blk sha256; do
+	manual_add_modules "${m}" || true
+done
+
+# Do not load KMS in the initramfs. Rootfs /etc/modprobe.d/dkgm-no-kms.conf
+# is also copied by mkinitramfs; keep an explicit copy if that hook order changes.
+mkdir -p "${DESTDIR}/etc/modprobe.d"
+printf '%s\n' 'blacklist v3d' 'blacklist vc4' \
+	> "${DESTDIR}/etc/modprobe.d/dkgm-no-kms.conf"
+
 # Optional mailbox udev rules. copy_file returns 1 when the file is already
 # in the image; unmatched globs must not become this script's exit status.
 for dir in /usr/lib/udev/rules.d /lib/udev/rules.d; do

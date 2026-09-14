@@ -75,6 +75,14 @@ This will:
 
 Output is typically `deploy/dkgm-pi-*.img.xz`.
 
+If a previous run was killed mid-`apt`, the next `./build.sh` reuses the Docker
+work container and repairs `dpkg` first. For a full rebuild (drops the cached
+Lite stages too):
+
+```bash
+CLEAN=1 ./build.sh
+```
+
 ## Flash and first boot
 
 1. Write the image to an SD card (Raspberry Pi Imager, Etcher, `dd`)
@@ -110,7 +118,8 @@ HDMI and serial have **no login prompt**. Kernel messages may still appear.
 ## Recovery
 
 - **Before** signed-boot OTP fuse: reflash the SD card.
-- **After** fuse: only images signed with the same RSA key will boot. Keep `secure-boot.pem` offline and backed up.
+- **After** fuse (`secure-boot: flags 1` on the diagnostic screen): the FAT partition must contain `boot.img` + `boot.sig` signed with the **same** RSA key that was fused. A new PEM will not boot that Pi. Keep `secure-boot.pem` offline and backed up. Error 6 loading `boot.img` means the pair is missing, unreadable, or signed with the wrong key.
+- Unplug extra USB storage while flashing/booting; the bootloader may try USB-MSD before the SD slot is useful.
 - A failed LUKS encrypt (power loss): reflash. Check `/var/log/dkgm-provision.log` if the system still boots unsigned.
 
 ## Layout
