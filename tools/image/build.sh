@@ -24,7 +24,7 @@ fi
 
 if [[ ! -f "${SCRIPT_DIR}/config.local" ]]; then
   echo "Missing ${SCRIPT_DIR}/config.local" >&2
-  echo "Copy config.local.example → config.local and set IMAGE_ENV, CLOUD_BASE_URL, PUBKEY_SSH_FIRST_USER, SECURE_BOOT_KEY." >&2
+  echo "Copy config.local.example → config.local and set IMAGE_ENV, CLOUD_API_URL, CLOUD_FRONTEND_URL, PUBKEY_SSH_FIRST_USER, SECURE_BOOT_KEY." >&2
   exit 1
 fi
 
@@ -41,6 +41,23 @@ if [[ "${IMAGE_ENV:-}" != "staging" && "${IMAGE_ENV:-}" != "production" ]]; then
   echo "IMAGE_ENV must be 'staging' or 'production' in config.local." >&2
   exit 1
 fi
+if ! grep -qE '^(export[[:space:]]+)?CLOUD_API_URL=' "${SCRIPT_DIR}/config.local"; then
+  echo "CLOUD_API_URL is required in config.local (CLOUD_BASE_URL was renamed)." >&2
+  exit 1
+fi
+if ! grep -qE '^(export[[:space:]]+)?CLOUD_FRONTEND_URL=' "${SCRIPT_DIR}/config.local"; then
+  echo "CLOUD_FRONTEND_URL is required in config.local (QR / pair URL base)." >&2
+  exit 1
+fi
+if [[ -z "${CLOUD_API_URL:-}" ]]; then
+  echo "CLOUD_API_URL is empty — set it in config.local." >&2
+  exit 1
+fi
+if [[ -z "${CLOUD_FRONTEND_URL:-}" ]]; then
+  echo "CLOUD_FRONTEND_URL is empty — set it in config.local." >&2
+  exit 1
+fi
+
 if [[ -z "${PUBKEY_SSH_FIRST_USER:-}" ]]; then
   echo "PUBKEY_SSH_FIRST_USER is required in config.local (support SSH public key)." >&2
   exit 1
@@ -61,6 +78,11 @@ signing_pubkey="$(openssl pkey -in "${SECURE_BOOT_KEY}" -pubout)"
 expected_pubkey="$(openssl pkey -pubin -in "${SECURE_BOOT_PUBKEY}" -pubout)"
 if [[ "${signing_pubkey}" != "${expected_pubkey}" ]]; then
   echo "SECURE_BOOT_KEY is not the ${IMAGE_ENV} signing key (${SECURE_BOOT_PUBKEY})." >&2
+  exit 1
+fi
+sb_bits="$(openssl rsa -in "${SECURE_BOOT_KEY}" -text -noout 2>/dev/null | awk '/Private-Key:/{print $2}' | tr -d '()')"
+if [[ "${sb_bits}" != "2048" ]]; then
+  echo "SECURE_BOOT_KEY must be RSA 2048 (got: ${sb_bits:-unknown})." >&2
   exit 1
 fi
 
@@ -103,11 +125,39 @@ else
   git -C "${PIGEN_DIR}" reset --hard "origin/${PIGEN_BRANCH}"
 fi
 
+# pi-gen's Docker image has xxd but not openssl. Signing boot.img without it
+# wrote an empty rsa2048 line; Pi 5 firmware then reports Error 12.
+if ! grep -qE '[[:space:]]openssl([[:space:]\\]|$)' "${PIGEN_DIR}/Dockerfile"; then
+  awk '{
+    if ($0 ~ /arch-test \\$/) sub(/arch-test \\/, "arch-test openssl \\")
+    print
+  }' "${PIGEN_DIR}/Dockerfile" > "${PIGEN_DIR}/Dockerfile.dkgm"
+  mv "${PIGEN_DIR}/Dockerfile.dkgm" "${PIGEN_DIR}/Dockerfile"
+fi
+
 echo "==> Installing stage-dkgm into pi-gen worktree"
 rm -rf "${STAGE_DST}"
 cp -a "${STAGE_SRC}" "${STAGE_DST}"
 # Ensure stage scripts are executable
 find "${STAGE_DST}" -type f \( -name 'prerun.sh' -o -name '*-run.sh' -o -name '*-run-chroot.sh' \) -exec chmod +x {} +
+
+# Stock stages run before stage-dkgm. CONTINUE reuses a work volume whose dpkg
+# may be interrupted in stage0–2; repair there, not only in stage-dkgm.
+cp "${SCRIPT_DIR}/scripts/dkgm-dpkg-repair.inc" "${PIGEN_DIR}/scripts/dkgm-dpkg-repair.inc"
+dkgm_append_dpkg_repair() {
+  local prerun="$1"
+  [[ -f "${prerun}" ]] || return 0
+  grep -q 'dkgm-dpkg-repair' "${prerun}" && return 0
+  cat >> "${prerun}" << 'EOF'
+
+# dkgm-dpkg-repair
+# shellcheck disable=SC1091
+. "${SCRIPT_DIR}/dkgm-dpkg-repair.inc"
+EOF
+}
+dkgm_append_dpkg_repair "${PIGEN_DIR}/stage0/prerun.sh"
+dkgm_append_dpkg_repair "${PIGEN_DIR}/stage1/prerun.sh"
+dkgm_append_dpkg_repair "${PIGEN_DIR}/stage2/prerun.sh"
 
 # Lite image only: skip desktop stages; export after stage-dkgm (not stage2)
 touch "${PIGEN_DIR}/stage3/SKIP" "${PIGEN_DIR}/stage4/SKIP" "${PIGEN_DIR}/stage5/SKIP"
@@ -141,8 +191,12 @@ mkdir -p "${OUT_DIR}"
 
 # build-docker.sh exits before `docker rm` when the build fails, which would
 # otherwise abort the next run. Resume that work volume (stage0–2 stay cached).
-# For a clean rebuild: docker rm -v pigen_work
-if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx pigen_work; then
+# Dirty dpkg after a kill is repaired in stage preruns.
+# Full clean rebuild: CLEAN=1 ./build.sh
+if [[ "${CLEAN:-}" == "1" ]]; then
+  echo "==> CLEAN=1: removing leftover pigen_work"
+  docker rm -f -v pigen_work 2>/dev/null || true
+elif docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx pigen_work; then
   echo "==> Resuming leftover pigen_work container (CONTINUE=1)"
   export CONTINUE=1
 fi

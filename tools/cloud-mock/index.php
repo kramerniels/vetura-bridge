@@ -2,7 +2,7 @@
 /**
  * Cloud mock — log-only. Upload this file (e.g. as test-pi.php) and set:
  *
- *   CLOUD_BASE_URL=https://your-host.example/test-pi.php
+ *   CLOUD_API_URL=https://your-host.example/test-pi.php
  *
  * The Pi POSTs /api/devices/register and GETs /api/devices/{id}/bootstrap
  * (PATH_INFO after this file). Nothing useful is returned; open this URL in a

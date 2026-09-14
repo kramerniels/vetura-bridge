@@ -1,0 +1,14 @@
+[connection]
+id=dkgm-wired
+uuid=7c2a1f90-6b4e-4d11-9c3a-0d6d0000e7e0
+type=ethernet
+autoconnect=true
+autoconnect-priority=100
+
+[ethernet]
+
+[ipv4]
+method=auto
+
+[ipv6]
+method=auto

@@ -3,6 +3,8 @@
 # Used from initramfs and from the first-boot provisioner. No trailing newline.
 set -eu
 
+mkdir -p /tmp
+
 cid=""
 for path in /sys/block/mmcblk0/device/cid /sys/block/mmcblk1/device/cid; do
 	if [ -f "${path}" ]; then
@@ -18,6 +20,11 @@ fi
 
 if ! command -v rpi-fw-crypto >/dev/null 2>&1; then
 	echo "dkgm-luks-key: rpi-fw-crypto not found" >&2
+	exit 1
+fi
+
+if [ ! -e /dev/vcio_crypto ] && [ ! -e /dev/vcio ]; then
+	echo "dkgm-luks-key: /dev/vcio missing (firmware mailbox)" >&2
 	exit 1
 fi
 

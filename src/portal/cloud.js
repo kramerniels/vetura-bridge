@@ -5,16 +5,23 @@ const { URL } = require("url");
 const DEFAULT_POLL_MS = 3000;
 const DEFAULT_REGISTER_RETRY_MS = 10000;
 
-function getCloudUrl() {
-    const url = (process.env.CLOUD_BASE_URL || "").trim().replace(/\/$/, "");
+function readEnvUrl(name) {
+    return (process.env[name] || "").trim().replace(/\/$/, "");
+}
+
+function getCloudApiUrl() {
+    const url = readEnvUrl("CLOUD_API_URL");
     if (!url) {
-        throw new Error("CLOUD_BASE_URL is not set");
+        throw new Error("CLOUD_API_URL is not set");
     }
     return url;
 }
 
 function getPairUrl(deviceId, claimSecret) {
-    const base = getCloudUrl();
+    const base = readEnvUrl("CLOUD_FRONTEND_URL");
+    if (!base) {
+        return null;
+    }
     const qs = new URLSearchParams({
         deviceId,
         claim: claimSecret,
@@ -83,7 +90,7 @@ function requestJson(method, urlString, options = {}) {
 }
 
 async function registerDevice(identity) {
-    const cloudUrl = getCloudUrl();
+    const cloudUrl = getCloudApiUrl();
     const response = await requestJson("POST", `${cloudUrl}/api/devices/register`, {
         body: {
             deviceId: identity.deviceId,
@@ -102,7 +109,7 @@ async function registerDevice(identity) {
 }
 
 async function fetchBootstrap(identity) {
-    const cloudUrl = getCloudUrl();
+    const cloudUrl = getCloudApiUrl();
     const response = await requestJson(
         "GET",
         `${cloudUrl}/api/devices/${encodeURIComponent(identity.deviceId)}/bootstrap`,
@@ -153,7 +160,7 @@ function startCloudLoop(identity, handlers = {}) {
     };
 
     try {
-        getCloudUrl();
+        getCloudApiUrl();
     } catch (err) {
         status = {
             cloudConfigured: false,

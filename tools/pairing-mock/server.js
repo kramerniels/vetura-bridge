@@ -510,5 +510,5 @@ server.listen(PORT, HOST, () => {
   const count = loadDevices().size;
   console.log(`pairing-mock listening on http://${HOST}:${PORT}`);
   console.log(`DB ${DB_PATH} (${count} device(s))`);
-  console.log(`Set CLOUD_BASE_URL=http://<lan-ip>:${PORT} on the Pi`);
+  console.log(`Set CLOUD_API_URL and CLOUD_FRONTEND_URL to http://<lan-ip>:${PORT} on the Pi`);
 });

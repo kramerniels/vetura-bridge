@@ -27,9 +27,14 @@ find_boot_dev() {
 	return 1
 }
 
+is_mounted() {
+	# util-linux mountpoint is not in the initramfs; /proc/mounts is.
+	grep -q " $1 " /proc/mounts 2>/dev/null
+}
+
 mount_boot() {
 	mkdir -p "${BOOT_MP}"
-	if mountpoint -q "${BOOT_MP}"; then
+	if is_mounted "${BOOT_MP}"; then
 		return 0
 	fi
 	bootdev=$(find_boot_dev) || return 1
@@ -37,8 +42,36 @@ mount_boot() {
 		|| mount -o rw "${bootdev}" "${BOOT_MP}"
 }
 
-root_dev_from_cmdline() {
-	# Prefer the kernel root= (PARTUUID=… or /dev/…)
+wait_block() {
+	_path="$1"
+	_n=0
+	while [ "${_n}" -lt 30 ]; do
+		if [ -b "${_path}" ]; then
+			return 0
+		fi
+		sleep 1
+		_n=$((_n + 1))
+	done
+	return 1
+}
+
+resolve_spec() {
+	spec="$1"
+	case "${spec}" in
+		"" | /dev/mapper/*) return 1 ;;
+		PARTUUID=* | UUID=* | LABEL=*)
+			dev=$(blkid -t "${spec}" -o device 2>/dev/null || true)
+			[ -n "${dev}" ] && echo "${dev}" && return 0
+			;;
+		/dev/*)
+			echo "${spec}"
+			return 0
+			;;
+	esac
+	return 1
+}
+
+root_spec_from_cmdline() {
 	for tok in $(cat /proc/cmdline); do
 		case "${tok}" in
 			root=*)
@@ -47,66 +80,153 @@ root_dev_from_cmdline() {
 				;;
 		esac
 	done
-	echo /dev/mmcblk0p2
+	return 1
 }
 
-resolve_root_dev() {
-	spec=$(root_dev_from_cmdline)
-	case "${spec}" in
-		/dev/mapper/*) echo "${spec}"; return 0 ;;
-		PARTUUID=*)
-			dev=$(blkid -t "${spec}" -o device 2>/dev/null || true)
-			if [ -n "${dev}" ]; then
-				echo "${dev}"
-				return 0
-			fi
-			;;
-		UUID=*)
-			dev=$(blkid -t "${spec}" -o device 2>/dev/null || true)
-			if [ -n "${dev}" ]; then
-				echo "${dev}"
-				return 0
-			fi
-			;;
-		/dev/*)
-			echo "${spec}"
+# Underlying partition to encrypt (ext4), not the mapper.
+resolve_plain_root() {
+	if spec=$(root_spec_from_cmdline); then
+		if dev=$(resolve_spec "${spec}"); then
+			echo "${dev}"
 			return 0
-			;;
-	esac
-	echo /dev/mmcblk0p2
+		fi
+	fi
+	for cand in /dev/mmcblk0p2 /dev/mmcblk1p2; do
+		if [ -b "${cand}" ]; then
+			echo "${cand}"
+			return 0
+		fi
+	done
+	return 1
+}
+
+# Underlying LUKS partition after first-boot encrypt.
+# root= is rewritten to /dev/mapper/cryptroot, so never blkid that path.
+find_luks_src() {
+	if [ -f "${BOOT_MP}/dkgm-luks-dev" ]; then
+		src=$(tr -d ' \n' <"${BOOT_MP}/dkgm-luks-dev")
+		if [ -n "${src}" ] && wait_block "${src}"; then
+			echo "${src}"
+			return 0
+		fi
+	fi
+	for tok in $(cat /proc/cmdline); do
+		case "${tok}" in
+			cryptdevice=*)
+				spec=${tok#cryptdevice=}
+				spec=${spec%%:*}
+				if dev=$(resolve_spec "${spec}"); then
+					echo "${dev}"
+					return 0
+				fi
+				;;
+		esac
+	done
+	dev=$(blkid -t TYPE=crypto_LUKS -o device 2>/dev/null | head -n 1 || true)
+	if [ -n "${dev}" ]; then
+		echo "${dev}"
+		return 0
+	fi
+	for cand in /dev/mmcblk0p2 /dev/mmcblk1p2; do
+		if [ -b "${cand}" ]; then
+			type=$(blkid -o value -s TYPE "${cand}" 2>/dev/null || true)
+			if [ "${type}" = "crypto_LUKS" ]; then
+				echo "${cand}"
+				return 0
+			fi
+		fi
+	done
+	return 1
+}
+
+say() {
+	_msg="dkgm-crypt: $*"
+	echo "${_msg}" >>"${BOOT_MP}/dkgm-crypt.log" 2>/dev/null || true
+	echo "${_msg}" >/dev/console 2>/dev/null || echo "${_msg}"
+}
+
+run_keyscript() {
+	if command -v timeout >/dev/null 2>&1; then
+		timeout 60 "${KEYSCRIPT}"
+	else
+		"${KEYSCRIPT}"
+	fi
+}
+
+load_crypt_modules() {
+	for m in dm_mod dm_crypt xts aes_generic aes_ce_cipher aes_ce_blk sha256; do
+		modprobe "${m}" 2>/dev/null || true
+	done
+}
+
+ensure_fw_crypto() {
+	mkdir -p /tmp
+	modprobe vcio 2>/dev/null || true
+	n=0
+	while [ "${n}" -lt 20 ]; do
+		if [ -e /dev/vcio_crypto ] || [ -e /dev/vcio ]; then
+			return 0
+		fi
+		sleep 1
+		n=$((n + 1))
+	done
+	panic "dkgm-crypt: /dev/vcio missing (firmware mailbox); cannot derive LUKS key"
 }
 
 open_luks() {
 	dev="$1"
+	say "opening LUKS ${dev} -> /dev/mapper/${MAPPER}"
 	if [ ! -x "${KEYSCRIPT}" ]; then
 		panic "dkgm-crypt: missing ${KEYSCRIPT}"
 	fi
-	pass=$(${KEYSCRIPT}) || panic "dkgm-crypt: passphrase derivation failed"
+	wait_block "${dev}" || panic "dkgm-crypt: LUKS device ${dev} not present"
+	ensure_fw_crypto
+	pass=$(run_keyscript) || panic "dkgm-crypt: passphrase derivation failed"
+	load_crypt_modules
 	printf '%s' "${pass}" | cryptsetup open "${dev}" "${MAPPER}" --key-file=- \
 		|| panic "dkgm-crypt: cryptsetup open failed"
+	say "LUKS open ok"
 }
 
 encrypt_root() {
 	dev="$1"
 	log_begin_msg "DKGM: encrypting root (several minutes)"
+	say "encrypting ${dev} - do not power off"
 
 	e2fsck -f -y "${dev}" || true
 
-	# Free space at the end of the device for the LUKS2 header.
+	# Leave 64MiB at the end of the partition for the LUKS2 header.
+	# resize2fs -f: initramfs clock is often 1970, so lastcheck < mtime
+	# even after a successful e2fsck, and resize2fs otherwise refuses.
 	blocks=$(dumpe2fs -h "${dev}" 2>/dev/null | awk '/Block count/ {print $3}')
 	bsize=$(dumpe2fs -h "${dev}" 2>/dev/null | awk '/Block size/ {print $3}')
-	if [ -n "${blocks}" ] && [ -n "${bsize}" ]; then
-		bytes=$((blocks * bsize))
-		shrink_bytes=$((bytes - 64 * 1024 * 1024))
-		if [ "${shrink_bytes}" -gt 1048576 ]; then
-			resize2fs "${dev}" $((shrink_bytes / 1024))K
-		fi
+	if [ -z "${blocks}" ] || [ -z "${bsize}" ]; then
+		panic "dkgm-crypt: cannot read ext4 size from ${dev}"
 	fi
+	bytes=$((blocks * bsize))
+	shrink_bytes=$((bytes - 64 * 1024 * 1024))
+	if [ "${shrink_bytes}" -le 1048576 ]; then
+		panic "dkgm-crypt: ${dev} too small to leave LUKS header space"
+	fi
+	say "shrinking filesystem for LUKS header"
+	resize2fs -f "${dev}" $((shrink_bytes / 1024))K \
+		|| panic "dkgm-crypt: resize2fs failed"
 
-	pass=$(${KEYSCRIPT}) || panic "dkgm-crypt: passphrase derivation failed"
-	printf '%s' "${pass}" | cryptsetup reencrypt --encrypt --type luks2 \
-		--reduce-device-size 32M --batch-mode --key-file=- "${dev}" \
+	say "waiting for firmware mailbox"
+	ensure_fw_crypto
+	say "deriving LUKS passphrase"
+	pass=$(run_keyscript) || panic "dkgm-crypt: passphrase derivation failed"
+	load_crypt_modules
+	# pbkdf2: LUKS2 default argon2id tries to use ~1GiB RAM and looks hung
+	# in initramfs (no progress). Passphrase is already high-entropy HMAC.
+	say "LUKS encrypt starting (pbkdf2, then data; progress on console)"
+	printf '%s' "${pass}" | cryptsetup -v reencrypt --encrypt --type luks2 \
+		--cipher aes-xts-plain64 --key-size 256 \
+		--pbkdf pbkdf2 --hash sha256 --iter-time 500 \
+		--reduce-device-size 32M --batch-mode --progress-frequency 5 \
+		--key-file=- "${dev}" >/dev/console 2>/dev/console \
 		|| panic "dkgm-crypt: LUKS encrypt failed"
+	say "encrypt finished, updating fstab and rebooting"
 
 	printf '%s' "${pass}" | cryptsetup open "${dev}" "${MAPPER}" --key-file=- \
 		|| panic "dkgm-crypt: open after encrypt failed"
@@ -123,10 +243,16 @@ encrypt_root() {
 	umount /run/dkgm-root
 	cryptsetup close "${MAPPER}" || true
 
+	printf '%s\n' "${dev}" >"${BOOT_MP}/dkgm-luks-dev"
+	partuuid=$(blkid -o value -s PARTUUID "${dev}" 2>/dev/null || true)
+	cryptspec="${dev}"
+	if [ -n "${partuuid}" ]; then
+		cryptspec="PARTUUID=${partuuid}"
+	fi
 	if [ -f "${BOOT_MP}/cmdline.txt" ]; then
-		# Drop resize; point root at the mapper; keep PARTUUID source via cryptdevice.
+		# Drop resize; point root at the mapper; remember the LUKS source.
 		sed -i -E 's/[[:space:]]*resize//g' "${BOOT_MP}/cmdline.txt"
-		sed -i -E "s|root=[^[:space:]]+|root=/dev/mapper/${MAPPER} cryptdevice=${dev}:${MAPPER}|" \
+		sed -i -E "s|root=[^[:space:]]+|root=/dev/mapper/${MAPPER} cryptdevice=${cryptspec}:${MAPPER}|" \
 			"${BOOT_MP}/cmdline.txt"
 	fi
 
@@ -138,16 +264,15 @@ encrypt_root() {
 	reboot -f
 }
 
-dev=$(resolve_root_dev)
+mount_boot || true
 
-if mount_boot && [ -f "${PENDING}" ]; then
+if [ -f "${PENDING}" ]; then
+	dev=$(resolve_plain_root) || panic "dkgm-crypt: cannot find root partition to encrypt"
 	encrypt_root "${dev}"
 fi
 
-type=$(blkid -o value -s TYPE "${dev}" 2>/dev/null || true)
-if [ "${type}" = "crypto_LUKS" ]; then
-	if [ ! -e "/dev/mapper/${MAPPER}" ]; then
-		open_luks "${dev}"
+if [ ! -e "/dev/mapper/${MAPPER}" ]; then
+	if src=$(find_luks_src); then
+		open_luks "${src}"
 	fi
-	# Initramfs local_mount_root uses ROOT from cmdline (updated at encrypt).
 fi

@@ -4,3 +4,5 @@ unzip
 avahi-daemon
 libnss-mdns
 sudo
+nodejs
+npm

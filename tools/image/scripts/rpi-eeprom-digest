@@ -1,7 +1,12 @@
 #!/bin/sh
-# Minimal rpi-eeprom-digest compatible signer (sha256 + ts + rsa2048 PKCS#1 v1.5).
+# rpi-eeprom-digest compatible signer (sha256 + ts + rsa2048 PKCS#1 v1.5).
 # See https://github.com/raspberrypi/rpi-eeprom/blob/master/rpi-eeprom-digest
 set -eu
+# Without pipefail a missing openssl still writes boot.sig with an empty
+# rsa2048 line; the Pi 5 firmware then reports Error 12 / bad signature.
+if (set -o pipefail) 2>/dev/null; then
+	set -o pipefail
+fi
 
 IMAGE=""
 KEY=""
@@ -25,15 +30,35 @@ done
 [ -f "${IMAGE}" ] || { echo "missing image: ${IMAGE}" >&2; exit 1; }
 [ -f "${KEY}" ] || { echo "missing key: ${KEY}" >&2; exit 1; }
 
-if ! command -v xxd >/dev/null 2>&1; then
-	hex() { python3 -c 'import sys; print(sys.stdin.buffer.read().hex())'; }
-else
-	hex() { xxd -c 4096 -p | tr -d '\n'; }
-fi
+command -v openssl >/dev/null 2>&1 || {
+	echo "openssl is required to sign ${IMAGE}" >&2
+	exit 1
+}
+command -v sha256sum >/dev/null 2>&1 || {
+	echo "sha256sum is required" >&2
+	exit 1
+}
+command -v xxd >/dev/null 2>&1 || {
+	echo "xxd is required" >&2
+	exit 1
+}
 
 hash=$(sha256sum "${IMAGE}" | awk '{print $1}')
+[ "${#hash}" -eq 64 ] || {
+	echo "sha256sum produced a hash of length ${#hash}, expected 64" >&2
+	exit 1
+}
+
 ts=$(date -u +%s)
-sig_hex=$(openssl dgst -sha256 -sign "${KEY}" -binary "${IMAGE}" | hex)
+sig_tmp=$(mktemp)
+trap 'rm -f "${sig_tmp}"' EXIT
+# Match upstream rpi-eeprom-digest: dgst -sign -sha256 to a file, then xxd.
+openssl dgst -sign "${KEY}" -sha256 -out "${sig_tmp}" "${IMAGE}"
+sig_hex=$(xxd -c 4096 -p "${sig_tmp}" | tr -d '\n[:space:]')
+if [ "${#sig_hex}" -ne 512 ]; then
+	echo "rsa2048 signature must be 512 hex chars (RSA-2048), got ${#sig_hex}" >&2
+	exit 1
+fi
 
 {
 	echo "sha256: ${hash}"

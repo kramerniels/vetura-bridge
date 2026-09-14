@@ -1,8 +1,7 @@
 [Unit]
 Description=DKGM agent (LAN portal + NATS worker)
-After=network-online.target dkgm-provision.service
-Wants=network-online.target
-Requires=dkgm-provision.service
+After=network.target dkgm-provision.service
+Wants=network.target
 
 [Service]
 Type=simple

@@ -5,7 +5,8 @@
 IMAGE_ENV='staging'
 
 # Required for QR pairing on first boot
-export CLOUD_BASE_URL='https://your-cloud-app.example.com'
+export CLOUD_API_URL='https://your-cloud-api.example.com'
+export CLOUD_FRONTEND_URL='https://your-cloud-app.example.com'
 
 # Support SSH: public key only (private key never goes on the SD card).
 # Build fails without this. One fleet key: a leak opens every device.

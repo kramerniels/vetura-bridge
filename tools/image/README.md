@@ -16,7 +16,7 @@ its own key. CI builds them on push (see [CI](#ci)).
 | Raspberry Pi OS Lite 64-bit (Trixie), Pi 5 | `/var/lib/dkgm-agent/state.json` |
 | Node.js 20 | `credentials.creds` / NATS pairing |
 | `/opt/dkgm-agent` + systemd `dkgm-agent` enabled | LUKS passphrase (derived from OTP + CID) |
-| `/opt/dkgm-agent/.env` with `CLOUD_BASE_URL` | |
+| `/opt/dkgm-agent/.env` with `CLOUD_API_URL` / `CLOUD_FRONTEND_URL` | |
 | Support SSH authorized_keys (public key only) | Signing **private** key |
 | Signed `boot.img` / `boot.sig` in `/usr/lib/dkgm/secure-boot/` | |
 
@@ -26,7 +26,7 @@ its own key. CI builds them on push (see [CI](#ci)).
 - Docker (Linux or macOS; privileged containers + `binfmt` for ARM)
 - Git, OpenSSL
 - Enough disk for pi-gen work dirs (tens of GB)
-- [config.local](./config.local.example) with `IMAGE_ENV`, `CLOUD_BASE_URL`, `PUBKEY_SSH_FIRST_USER`, `SECURE_BOOT_KEY`
+- [config.local](./config.local.example) with `IMAGE_ENV`, `CLOUD_API_URL`, `CLOUD_FRONTEND_URL`, `PUBKEY_SSH_FIRST_USER`, `SECURE_BOOT_KEY`
 
 On Linux you may need `binfmt` / `qemu-user-static` support so the ARM chroot
 works. See the [pi-gen README](https://github.com/RPi-Distro/pi-gen).
@@ -40,8 +40,9 @@ ssh-keygen -t ed25519 -f ~/.ssh/dkgm-support -N ""
 cd tools/image
 cp config.local.example config.local
 # Edit config.local:
-#   IMAGE_ENV='staging'   # or 'production'
-#   CLOUD_BASE_URL
+#   IMAGE_ENV='staging'  # or 'production'
+#   CLOUD_API_URL        # origin/path only, no ?query (agent appends /api/...)
+#   CLOUD_FRONTEND_URL   # origin for QR pair URL (/devices/pair?...)
 #   PUBKEY_SSH_FIRST_USER='ssh-ed25519 AAAA... support@dkgm'
 #   PUBKEY_ONLY_SSH=1
 #   SECURE_BOOT_KEY='/Users/you/.vetura-bridge/secure-boot-staging.pem'
@@ -86,7 +87,7 @@ cd tools/image
 
 This will:
 
-1. Fail if `IMAGE_ENV`, the SSH public key or the signing PEM is missing, or the PEM does not match `keys/<IMAGE_ENV>.pub.pem`
+1. Fail if `IMAGE_ENV`, a cloud URL, the SSH public key or the signing PEM is missing, or the PEM does not match `keys/<IMAGE_ENV>.pub.pem`
 2. Stage the product package into the pi-gen stage
 3. Clone/update [pi-gen](https://github.com/RPi-Distro/pi-gen) (`arm64` branch)
 4. Run `build-docker.sh` (Lite stages + `stage-dkgm`, including lockdown + signed `boot.img`)
@@ -95,6 +96,14 @@ This will:
 Output is `deploy/vetura-bridge-<env>-<sha>.img.xz`, e.g.
 `vetura-bridge-staging-cecbae2.img.xz`. The sha gets a `-dirty` suffix when
 tracked files have uncommitted changes.
+
+If a previous run was killed mid-`apt`, the next `./build.sh` reuses the Docker
+work container and repairs `dpkg` first. For a full rebuild (drops the cached
+Lite stages too):
+
+```bash
+CLEAN=1 ./build.sh
+```
 
 ## CI
 
@@ -112,7 +121,8 @@ Each GitHub environment (**Settings → Environments** → `staging` / `producti
 
 | Name | Kind | Value |
 |------|------|-------|
-| `CLOUD_BASE_URL` | variable | Online app URL of that environment |
+| `CLOUD_API_URL` | variable | Cloud API origin of that environment |
+| `CLOUD_FRONTEND_URL` | variable | Cloud frontend origin of that environment (QR pair link) |
 | `SUPPORT_SSH_PUBKEY` | variable | Support SSH public key (`ssh-ed25519 AAAA...`) |
 | `SECURE_BOOT_KEY` | secret | Private signing PEM of that environment |
 
@@ -122,7 +132,9 @@ tags**), so no other branch can use its key.
 ## Flash and first boot
 
 1. Write the image to an SD card (Raspberry Pi Imager, Etcher, `dd`)
-2. Boot a **Pi 5** (Ethernet recommended; Wi‑Fi country is `NL` in `config`)
+2. Boot a **Pi 5** on **Ethernet** (no Wi‑Fi SSID is baked in). HDMI has **no
+   login**: the last systemd line (often `cloud-init.target`) stays on screen.
+   That is not a hang. Find the IP on your router and open `http://<ip>/` or SSH.
 3. First boot takes **several extra minutes** and **reboots more than once**:
    1. OTP device key (one-time, irreversible)
    2. Initramfs LUKS-encrypts the root partition (passphrase = HMAC of OTP key + SD CID)
@@ -152,7 +164,8 @@ HDMI and serial have **no login prompt**. Kernel messages may still appear.
 ## Recovery
 
 - **Before** signed-boot OTP fuse: reflash the SD card.
-- **After** fuse: only images signed with the same RSA key will boot. Keep both private signing keys offline and backed up.
+- **After** fuse (`secure-boot: flags 1` on the diagnostic screen): the FAT partition must contain `boot.img` + `boot.sig` signed with the **same** RSA key that was fused. A new PEM will not boot that Pi. Keep both private signing keys offline and backed up. Error 6 loading `boot.img` means the pair is missing, unreadable, or signed with the wrong key.
+- Unplug extra USB storage while flashing/booting; the bootloader may try USB-MSD before the SD slot is useful.
 - A failed LUKS encrypt (power loss): reflash. Check `/var/log/dkgm-provision.log` if the system still boots unsigned.
 
 ## Layout

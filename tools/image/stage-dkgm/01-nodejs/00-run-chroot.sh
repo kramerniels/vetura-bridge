@@ -1,8 +1,12 @@
 #!/bin/bash -e
-# Install Node.js 20 (arm64) from NodeSource.
+# Node.js 20 + npm from Raspberry Pi OS / Debian Trixie.
+# The distro nodejs package does not include npm; do not use NodeSource
+# (its repo is often unsigned/SHA-1-blocked on Trixie, so apt falls back
+# to Debian nodejs and `npm` is missing).
 
-curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-apt-get install -y nodejs
+apt-get install -y nodejs npm
 
+command -v node >/dev/null
+command -v npm >/dev/null
 node --version
 npm --version
