@@ -31,22 +31,15 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Free disk space
-        run: |
-          df -h /
-          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /usr/share/swift /usr/local/.ghcup /opt/ghc \
-            /opt/hostedtoolcache /usr/local/share/boost /usr/lib/jvm /opt/microsoft /opt/google
-          sudo docker system prune --all --force --volumes
-          df -h /
-
       - name: Write config.local
         env:
           IMAGE_ENV: ${{ matrix.env }}
-          CLOUD_BASE_URL: ${{ vars.CLOUD_BASE_URL }}
+          CLOUD_API_URL: ${{ vars.CLOUD_API_URL }}
+          CLOUD_FRONTEND_URL: ${{ vars.CLOUD_FRONTEND_URL }}
           SUPPORT_SSH_PUBKEY: ${{ vars.SUPPORT_SSH_PUBKEY }}
           SECURE_BOOT_KEY: ${{ secrets.SECURE_BOOT_KEY }}
         run: |
-          for name in CLOUD_BASE_URL SUPPORT_SSH_PUBKEY SECURE_BOOT_KEY; do
+          for name in CLOUD_API_URL CLOUD_FRONTEND_URL SUPPORT_SSH_PUBKEY SECURE_BOOT_KEY; do
             if [[ -z "${!name}" ]]; then
               echo "::error::${name} is not set on the ${IMAGE_ENV} environment"
               exit 1
@@ -56,11 +49,20 @@ jobs:
           printf '%s\n' "${SECURE_BOOT_KEY}" | tr -d '\r' > "${RUNNER_TEMP}/secure-boot.pem"
           cat > tools/image/config.local <<EOF
           IMAGE_ENV='${IMAGE_ENV}'
-          export CLOUD_BASE_URL='${CLOUD_BASE_URL}'
+          export CLOUD_API_URL='${CLOUD_API_URL}'
+          export CLOUD_FRONTEND_URL='${CLOUD_FRONTEND_URL}'
           PUBKEY_SSH_FIRST_USER='${SUPPORT_SSH_PUBKEY}'
           PUBKEY_ONLY_SSH=1
           SECURE_BOOT_KEY='${RUNNER_TEMP}/secure-boot.pem'
           EOF
+
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /usr/share/swift /usr/local/.ghcup /opt/ghc \
+            /opt/hostedtoolcache /usr/local/share/boost /usr/lib/jvm /opt/microsoft /opt/google
+          sudo docker system prune --all --force --volumes
+          df -h /
 
       - name: Build image
         run: tools/image/build.sh
