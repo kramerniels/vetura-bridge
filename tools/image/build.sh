@@ -24,7 +24,7 @@ fi
 
 if [[ ! -f "${SCRIPT_DIR}/config.local" ]]; then
   echo "Missing ${SCRIPT_DIR}/config.local" >&2
-  echo "Copy config.local.example → config.local and set CLOUD_BASE_URL, PUBKEY_SSH_FIRST_USER, SECURE_BOOT_KEY." >&2
+  echo "Copy config.local.example → config.local and set IMAGE_ENV, CLOUD_BASE_URL, PUBKEY_SSH_FIRST_USER, SECURE_BOOT_KEY." >&2
   exit 1
 fi
 
@@ -37,6 +37,10 @@ source "${SCRIPT_DIR}/config"
 source "${SCRIPT_DIR}/config.local"
 set +a
 
+if [[ "${IMAGE_ENV:-}" != "staging" && "${IMAGE_ENV:-}" != "production" ]]; then
+  echo "IMAGE_ENV must be 'staging' or 'production' in config.local." >&2
+  exit 1
+fi
 if [[ -z "${PUBKEY_SSH_FIRST_USER:-}" ]]; then
   echo "PUBKEY_SSH_FIRST_USER is required in config.local (support SSH public key)." >&2
   exit 1
@@ -46,7 +50,17 @@ if [[ "${PUBKEY_ONLY_SSH:-}" != "1" ]]; then
   exit 1
 fi
 if [[ -z "${SECURE_BOOT_KEY:-}" || ! -f "${SECURE_BOOT_KEY}" ]]; then
-  echo "SECURE_BOOT_KEY must be a readable RSA 2048 PEM (openssl genrsa 2048 > secure-boot.pem)." >&2
+  echo "SECURE_BOOT_KEY must be a readable RSA 2048 PEM (the ${IMAGE_ENV} signing key)." >&2
+  exit 1
+fi
+
+# A Pi only boots images signed with the key it was provisioned with, so never
+# sign an image with the other environment's key.
+SECURE_BOOT_PUBKEY="${SCRIPT_DIR}/keys/${IMAGE_ENV}.pub.pem"
+signing_pubkey="$(openssl pkey -in "${SECURE_BOOT_KEY}" -pubout)"
+expected_pubkey="$(openssl pkey -pubin -in "${SECURE_BOOT_PUBKEY}" -pubout)"
+if [[ "${signing_pubkey}" != "${expected_pubkey}" ]]; then
+  echo "SECURE_BOOT_KEY is not the ${IMAGE_ENV} signing key (${SECURE_BOOT_PUBKEY})." >&2
   exit 1
 fi
 
@@ -54,6 +68,14 @@ if [[ -z "${FIRST_USER_PASS:-}" || "${FIRST_USER_PASS}" == "change-me" ]]; then
   FIRST_USER_PASS="$(openssl rand -base64 33)"
   echo "==> Generated random FIRST_USER_PASS (not used for SSH login)"
 fi
+
+# <name>-<env>-<short sha>; -dirty when tracked files have uncommitted changes.
+GIT_SHA="$(git -C "${REPO_ROOT}" rev-parse --short=7 HEAD)"
+if [[ -n "$(git -C "${REPO_ROOT}" status --porcelain --untracked-files=no)" ]]; then
+  GIT_SHA="${GIT_SHA}-dirty"
+fi
+IMG_NAME="${IMG_NAME}-${IMAGE_ENV}-${GIT_SHA}"
+echo "==> Building ${IMG_NAME}"
 
 echo "==> Preparing product package for the image stage"
 rm -rf "${PACKAGE_FILES}"
@@ -97,7 +119,8 @@ echo "==> Merging config + config.local into pi-gen"
 # Write into the pi-gen tree (not a path outside it). build-docker.sh on macOS does
 # not rewrite -c <hostpath> to /config inside the container (BSD sed has no \s),
 # so ./build.sh would source a Mac path that does not exist in Docker.
-# Trailing assignments override FIRST_USER_PASS if it was randomised above.
+# Trailing assignments override FIRST_USER_PASS if it was randomised above, and
+# name the output <IMG_NAME>.img.xz instead of pi-gen's image_<date>-<IMG_NAME>.img.xz.
 {
   cat "${SCRIPT_DIR}/config"
   echo
@@ -105,6 +128,7 @@ echo "==> Merging config + config.local into pi-gen"
   echo
   echo "PUBKEY_ONLY_SSH=1"
   printf "FIRST_USER_PASS=%q\n" "${FIRST_USER_PASS}"
+  printf "IMG_NAME=%q\nIMG_FILENAME=%q\nARCHIVE_FILENAME=%q\n" "${IMG_NAME}" "${IMG_NAME}" "${IMG_NAME}"
 } > "${PIGEN_DIR}/config"
 
 # Signing key and digest tool for stage-dkgm/05-secure-boot (never copied into rootfs).
@@ -137,4 +161,4 @@ if [[ -d "${PIGEN_DIR}/deploy" ]]; then
   cp -a "${PIGEN_DIR}/deploy/." "${OUT_DIR}/"
 fi
 
-echo "Done. Flash an image from ${OUT_DIR}/ (see README.md)."
+echo "Done. Flash ${IMG_NAME} from ${OUT_DIR}/ (see README.md)."

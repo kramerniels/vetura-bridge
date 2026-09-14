@@ -1,7 +1,8 @@
 # pi-gen config for the DKGM Pi golden image (Raspberry Pi OS Lite 64-bit).
 # Override secrets and CLOUD_BASE_URL in config.local (see config.local.example).
 
-IMG_NAME='dkgm-pi'
+# build.sh appends -<IMAGE_ENV>-<git sha>, e.g. vetura-bridge-staging-cecbae2
+IMG_NAME='vetura-bridge'
 PI_GEN_RELEASE='DKGM Pi'
 RELEASE='trixie'
 

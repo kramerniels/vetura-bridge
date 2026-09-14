@@ -1,5 +1,9 @@
 # Copy to config.local and fill in. config.local is gitignored.
 
+# Target environment: staging | production. Part of the image name, and
+# SECURE_BOOT_KEY must match keys/<IMAGE_ENV>.pub.pem.
+IMAGE_ENV='staging'
+
 # Required for QR pairing on first boot
 export CLOUD_BASE_URL='https://your-cloud-app.example.com'
 
@@ -12,7 +16,6 @@ PUBKEY_ONLY_SSH=1
 # Not a login password — PasswordAuthentication is disabled.
 FIRST_USER_PASS='change-me'
 
-# RSA 2048 PEM used to sign boot.img (and pieeprom if tooling allows).
-# Generate: openssl genrsa 2048 > secure-boot.pem
-# Keep this file offline; never copy it into the image.
-SECURE_BOOT_KEY='/absolute/path/to/secure-boot.pem'
+# RSA 2048 private key of IMAGE_ENV, used to sign boot.img (and pieeprom if tooling allows).
+# Keep it outside the repo and backed up offline; never commit it or copy it into the image.
+SECURE_BOOT_KEY='/absolute/path/to/secure-boot-staging.pem'

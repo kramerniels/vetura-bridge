@@ -8,6 +8,9 @@ The image is an appliance: SSH is **pubkey-only** (your support key), HDMI/seria
 have no login, root is **LUKS** bound to this Pi + this SD card, and **signed
 boot** rejects a tweaked boot partition. There is no overlay filesystem.
 
+There is one image per environment (`staging`, `production`), each signed with
+its own key. CI builds them on push (see [CI](#ci)).
+
 | Included | Not included (per device) |
 |----------|---------------------------|
 | Raspberry Pi OS Lite 64-bit (Trixie), Pi 5 | `/var/lib/dkgm-agent/state.json` |
@@ -23,7 +26,7 @@ boot** rejects a tweaked boot partition. There is no overlay filesystem.
 - Docker (Linux or macOS; privileged containers + `binfmt` for ARM)
 - Git, OpenSSL
 - Enough disk for pi-gen work dirs (tens of GB)
-- [config.local](./config.local.example) with `CLOUD_BASE_URL`, `PUBKEY_SSH_FIRST_USER`, `SECURE_BOOT_KEY`
+- [config.local](./config.local.example) with `IMAGE_ENV`, `CLOUD_BASE_URL`, `PUBKEY_SSH_FIRST_USER`, `SECURE_BOOT_KEY`
 
 On Linux you may need `binfmt` / `qemu-user-static` support so the ARM chroot
 works. See the [pi-gen README](https://github.com/RPi-Distro/pi-gen).
@@ -33,17 +36,15 @@ works. See the [pi-gen README](https://github.com/RPi-Distro/pi-gen).
 ```bash
 # SSH support key (private key stays on the support laptop; never on the SD)
 ssh-keygen -t ed25519 -f ~/.ssh/dkgm-support -N ""
-# Secure-boot signing key (RSA 2048). Back this up; losing it bricks signed devices.
-openssl genrsa 2048 > ./.dkgm-secure-boot.pem
-chmod 600 ./.dkgm-secure-boot.pem
 
 cd tools/image
 cp config.local.example config.local
 # Edit config.local:
+#   IMAGE_ENV='staging'   # or 'production'
 #   CLOUD_BASE_URL
 #   PUBKEY_SSH_FIRST_USER='ssh-ed25519 AAAA... support@dkgm'
 #   PUBKEY_ONLY_SSH=1
-#   SECURE_BOOT_KEY='/Users/you/.dkgm-secure-boot.pem'
+#   SECURE_BOOT_KEY='/Users/you/.vetura-bridge/secure-boot-staging.pem'
 ```
 
 `FIRST_USER_PASS` is required by pi-gen. `build.sh` replaces `change-me` with a
@@ -54,8 +55,27 @@ One public key is baked into every card. If that **private** SSH key leaks, ever
 device is reachable. Rotate by installing a new `authorized_keys` over SSH (or
 a new image) and retiring the old key.
 
-The signing PEM is used only on the build machine. It is never copied into the
-rootfs.
+### Signing keys
+
+Staging and production each have their own RSA 2048 secure-boot key. A Pi only
+boots images signed with the key it was provisioned with, so a staging device
+never runs a production image, and the other way around.
+
+- The public keys are committed in [`keys/`](./keys/) (`staging.pub.pem`,
+  `production.pub.pem`). `build.sh` refuses to build when `SECURE_BOOT_KEY` is
+  not the private key of `keys/<IMAGE_ENV>.pub.pem`.
+- The private keys **never** go in git (this repository is public). They live in
+  the GitHub environment secrets and in an offline backup: GitHub secrets cannot
+  be read back, and losing a key means its devices never get a new signed boot image.
+- The signing PEM is used only on the build machine. It is never copied into the
+  rootfs.
+
+New key for an environment (devices already provisioned keep requiring the old one):
+
+```bash
+openssl genrsa -out secure-boot-staging.pem 2048
+openssl pkey -in secure-boot-staging.pem -pubout -out tools/image/keys/staging.pub.pem
+```
 
 ## Build
 
@@ -66,13 +86,38 @@ cd tools/image
 
 This will:
 
-1. Fail if the SSH public key or signing PEM is missing
+1. Fail if `IMAGE_ENV`, the SSH public key or the signing PEM is missing, or the PEM does not match `keys/<IMAGE_ENV>.pub.pem`
 2. Stage the product package into the pi-gen stage
 3. Clone/update [pi-gen](https://github.com/RPi-Distro/pi-gen) (`arm64` branch)
 4. Run `build-docker.sh` (Lite stages + `stage-dkgm`, including lockdown + signed `boot.img`)
 5. Copy artifacts to [`deploy/`](./deploy/)
 
-Output is typically `deploy/dkgm-pi-*.img.xz`.
+Output is `deploy/vetura-bridge-<env>-<sha>.img.xz`, e.g.
+`vetura-bridge-staging-cecbae2.img.xz`. The sha gets a `-dirty` suffix when
+tracked files have uncommitted changes.
+
+## CI
+
+[`.github/workflows/image.yml`](../../.github/workflows/image.yml) runs `build.sh`
+on GitHub's arm64 runners when app or image files change:
+
+- push to any branch: `staging` image
+- push to `main`: `staging` and `production` images
+
+Each image is uploaded as a workflow artifact named `vetura-bridge-<env>-<sha>.img.xz`
+and kept for 30 days. This repository is public, so anyone signed in to GitHub can
+download them. The signing and SSH private keys are never part of the image.
+
+Each GitHub environment (**Settings → Environments** → `staging` / `production`) needs:
+
+| Name | Kind | Value |
+|------|------|-------|
+| `CLOUD_BASE_URL` | variable | Online app URL of that environment |
+| `SUPPORT_SSH_PUBKEY` | variable | Support SSH public key (`ssh-ed25519 AAAA...`) |
+| `SECURE_BOOT_KEY` | secret | Private signing PEM of that environment |
+
+Limit the `production` environment to the `main` branch (**Deployment branches and
+tags**), so no other branch can use its key.
 
 ## Flash and first boot
 
@@ -107,7 +152,7 @@ HDMI and serial have **no login prompt**. Kernel messages may still appear.
 ## Recovery
 
 - **Before** signed-boot OTP fuse: reflash the SD card.
-- **After** fuse: only images signed with the same RSA key will boot. Keep `secure-boot.pem` offline and backed up.
+- **After** fuse: only images signed with the same RSA key will boot. Keep both private signing keys offline and backed up.
 - A failed LUKS encrypt (power loss): reflash. Check `/var/log/dkgm-provision.log` if the system still boots unsigned.
 
 ## Layout
@@ -117,7 +162,8 @@ tools/image/
   README.md
   build.sh
   config                 # shared pi-gen defaults
-  config.local.example   # secrets / SSH pubkey / signing key path
+  config.local.example   # environment / SSH pubkey / signing key path
+  keys/                  # public secure-boot keys (staging, production)
   scripts/rpi-eeprom-digest
   stage-dkgm/            # Lite + dkgm-agent + lockdown + signed boot.img
   .pi-gen/               # gitignored clone

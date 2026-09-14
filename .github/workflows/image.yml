@@ -1,0 +1,75 @@
+# Builds the Raspberry Pi golden image with tools/image/build.sh:
+# staging on every push, staging + production on main.
+# Environment setup: tools/image/README.md (CI section).
+name: Image
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - src/**
+      - packaging/**
+      - package.json
+      - package-lock.json
+      - .env.example
+      - tools/image/**
+      - "!tools/image/README.md"
+      - .github/workflows/image.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.env }}
+    runs-on: ubuntu-24.04-arm
+    strategy:
+      fail-fast: false
+      matrix:
+        env: ${{ github.ref == 'refs/heads/main' && fromJSON('["staging", "production"]') || fromJSON('["staging"]') }}
+    environment: ${{ matrix.env }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /usr/share/swift /usr/local/.ghcup /opt/ghc \
+            /opt/hostedtoolcache /usr/local/share/boost /usr/lib/jvm /opt/microsoft /opt/google
+          sudo docker system prune --all --force --volumes
+          df -h /
+
+      - name: Write config.local
+        env:
+          IMAGE_ENV: ${{ matrix.env }}
+          CLOUD_BASE_URL: ${{ vars.CLOUD_BASE_URL }}
+          SUPPORT_SSH_PUBKEY: ${{ vars.SUPPORT_SSH_PUBKEY }}
+          SECURE_BOOT_KEY: ${{ secrets.SECURE_BOOT_KEY }}
+        run: |
+          for name in CLOUD_BASE_URL SUPPORT_SSH_PUBKEY SECURE_BOOT_KEY; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::${name} is not set on the ${IMAGE_ENV} environment"
+              exit 1
+            fi
+          done
+          umask 077
+          printf '%s\n' "${SECURE_BOOT_KEY}" | tr -d '\r' > "${RUNNER_TEMP}/secure-boot.pem"
+          cat > tools/image/config.local <<EOF
+          IMAGE_ENV='${IMAGE_ENV}'
+          export CLOUD_BASE_URL='${CLOUD_BASE_URL}'
+          PUBKEY_SSH_FIRST_USER='${SUPPORT_SSH_PUBKEY}'
+          PUBKEY_ONLY_SSH=1
+          SECURE_BOOT_KEY='${RUNNER_TEMP}/secure-boot.pem'
+          EOF
+
+      - name: Build image
+        run: tools/image/build.sh
+
+      - name: Upload image
+        uses: actions/upload-artifact@v7
+        with:
+          path: tools/image/deploy/*.img.xz
+          archive: false
+          if-no-files-found: error
+          retention-days: 30
