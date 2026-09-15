@@ -24,9 +24,12 @@ fi
 
 if [[ ! -f "${SCRIPT_DIR}/config.local" ]]; then
   echo "Missing ${SCRIPT_DIR}/config.local" >&2
-  echo "Copy config.local.example → config.local and set CLOUD_API_URL, CLOUD_FRONTEND_URL, PUBKEY_SSH_FIRST_USER, SECURE_BOOT_KEY." >&2
+  echo "Copy config.local.example → config.local and set IMAGE_ENV, staging/production CLOUD_* URLs, PUBKEY_SSH_FIRST_USER, SECURE_BOOT_KEY." >&2
   exit 1
 fi
+
+# CLI IMAGE_ENV=production ./build.sh must win over config.local.
+CLI_IMAGE_ENV="${IMAGE_ENV:-}"
 
 # shellcheck disable=SC1091
 set -a
@@ -37,21 +40,51 @@ source "${SCRIPT_DIR}/config"
 source "${SCRIPT_DIR}/config.local"
 set +a
 
-if ! grep -qE '^(export[[:space:]]+)?CLOUD_API_URL=' "${SCRIPT_DIR}/config.local"; then
-  echo "CLOUD_API_URL is required in config.local (CLOUD_BASE_URL was renamed)." >&2
-  exit 1
+if [[ -n "${CLI_IMAGE_ENV}" ]]; then
+  IMAGE_ENV="${CLI_IMAGE_ENV}"
 fi
-if ! grep -qE '^(export[[:space:]]+)?CLOUD_FRONTEND_URL=' "${SCRIPT_DIR}/config.local"; then
-  echo "CLOUD_FRONTEND_URL is required in config.local (QR / pair URL base)." >&2
-  exit 1
+IMAGE_ENV="$(printf '%s' "${IMAGE_ENV:-staging}" | tr '[:upper:]' '[:lower:]')"
+case "${IMAGE_ENV}" in
+  staging|production) ;;
+  *)
+    echo "IMAGE_ENV must be staging or production (got: ${IMAGE_ENV})." >&2
+    exit 1
+    ;;
+esac
+
+if [[ "${IMAGE_ENV}" == "production" ]]; then
+  CLOUD_API_URL="${PRODUCTION_CLOUD_API_URL:-}"
+  CLOUD_FRONTEND_URL="${PRODUCTION_CLOUD_FRONTEND_URL:-}"
+  LOCK_SIGNED_BOOT=1
+  IMG_NAME='vetura-pi-production'
+  if [[ -z "${CLOUD_API_URL}" || -z "${CLOUD_FRONTEND_URL}" ]]; then
+    echo "Production requires PRODUCTION_CLOUD_API_URL and PRODUCTION_CLOUD_FRONTEND_URL in config.local." >&2
+    exit 1
+  fi
+else
+  CLOUD_API_URL="${STAGING_CLOUD_API_URL:-${CLOUD_API_URL:-}}"
+  CLOUD_FRONTEND_URL="${STAGING_CLOUD_FRONTEND_URL:-${CLOUD_FRONTEND_URL:-}}"
+  LOCK_SIGNED_BOOT=0
+  IMG_NAME='vetura-pi-staging'
 fi
+
 if [[ -z "${CLOUD_API_URL:-}" ]]; then
-  echo "CLOUD_API_URL is empty — set it in config.local." >&2
+  echo "CLOUD_API_URL is empty — set STAGING_CLOUD_API_URL (or CLOUD_API_URL) in config.local." >&2
   exit 1
 fi
 if [[ -z "${CLOUD_FRONTEND_URL:-}" ]]; then
-  echo "CLOUD_FRONTEND_URL is empty — set it in config.local." >&2
+  echo "CLOUD_FRONTEND_URL is empty — set STAGING_CLOUD_FRONTEND_URL (or CLOUD_FRONTEND_URL) in config.local." >&2
   exit 1
+fi
+
+echo "==> IMAGE_ENV=${IMAGE_ENV}"
+echo "    CLOUD_API_URL=${CLOUD_API_URL}"
+echo "    CLOUD_FRONTEND_URL=${CLOUD_FRONTEND_URL}"
+if [[ "${LOCK_SIGNED_BOOT}" == "1" ]]; then
+  echo "    Signed-boot lock ON (first boot writes SIGNED_BOOT=1 to EEPROM)"
+  echo "    Pi 5: program the customer pubkey with rpiboot before flashing, or the board stops at Error 12."
+else
+  echo "    Signed-boot lock OFF (safe to reflash)"
 fi
 
 if [[ -z "${PUBKEY_SSH_FIRST_USER:-}" ]]; then
@@ -139,6 +172,11 @@ echo "==> Merging config + config.local into pi-gen"
   echo
   echo "PUBKEY_ONLY_SSH=1"
   printf "FIRST_USER_PASS=%q\n" "${FIRST_USER_PASS}"
+  printf "export IMAGE_ENV=%q\n" "${IMAGE_ENV}"
+  printf "export LOCK_SIGNED_BOOT=%q\n" "${LOCK_SIGNED_BOOT}"
+  printf "export IMG_NAME=%q\n" "${IMG_NAME}"
+  printf "export CLOUD_API_URL=%q\n" "${CLOUD_API_URL}"
+  printf "export CLOUD_FRONTEND_URL=%q\n" "${CLOUD_FRONTEND_URL}"
 } > "${PIGEN_DIR}/config"
 
 # Signing key and digest tool for stage-vetura/05-secure-boot (never copied into rootfs).
@@ -186,7 +224,7 @@ vetura_prune_old_flash_images() {
   datepart="${stem#image_}"
   find "${dir}" -maxdepth 1 -type f \( -name 'image_*.img.xz' -o -name 'image_*.img' \) \
     ! -name "$(basename "${newest}")" -print -delete
-  find "${dir}" -maxdepth 1 -type f -name '*-vetura-pi-lite.info' \
+  find "${dir}" -maxdepth 1 -type f -name '*.info' \
     ! -name "${datepart}.info" -print -delete
 }
 

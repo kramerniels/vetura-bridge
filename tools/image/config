@@ -1,7 +1,8 @@
 # pi-gen config for the Vetura Pi golden image (Raspberry Pi OS Lite 64-bit).
 # Override secrets and CLOUD_* URLs in config.local (see config.local.example).
 
-IMG_NAME='vetura-pi'
+# Overridden by build.sh from IMAGE_ENV (vetura-pi-staging / vetura-pi-production).
+IMG_NAME='vetura-pi-staging'
 PI_GEN_RELEASE='Vetura Pi'
 RELEASE='trixie'
 
@@ -25,7 +26,11 @@ WPA_COUNTRY='NL'
 DEPLOY_COMPRESSION='xz'
 COMPRESSION_LEVEL=6
 
-# Cloud URLs baked into /opt/vetura-agent/.env (override in config.local)
+# staging (default) or production. CLI: IMAGE_ENV=production ./build.sh
+export IMAGE_ENV='staging'
+export LOCK_SIGNED_BOOT=0
+
+# Resolved by build.sh from STAGING_* / PRODUCTION_* in config.local
 export CLOUD_API_URL='https://api.example.com'
 export CLOUD_FRONTEND_URL='https://app.example.com'
 

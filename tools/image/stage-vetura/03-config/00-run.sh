@@ -35,6 +35,10 @@ set_env_var() {
 set_env_var "CLOUD_API_URL" "${CLOUD_API_URL}"
 set_env_var "CLOUD_FRONTEND_URL" "${CLOUD_FRONTEND_URL}"
 
+install -d -m 0755 "${ROOTFS_DIR}/usr/lib/vetura"
+printf '%s\n' "${IMAGE_ENV:-staging}" > "${ROOTFS_DIR}/usr/lib/vetura/image-env"
+chmod 0644 "${ROOTFS_DIR}/usr/lib/vetura/image-env"
+
 chmod 600 "${ENV_FILE}"
 # Ownership fixed in 01-run-chroot of previous step may be lost after copy; fix here via numeric if needed.
 # vetura-agent uid is assigned in chroot; defer chown to a small chroot script.

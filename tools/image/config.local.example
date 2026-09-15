@@ -1,8 +1,14 @@
 # Copy to config.local and fill in. config.local is gitignored.
 
-# Required for QR pairing on first boot
-export CLOUD_API_URL='https://your-cloud-api.example.com'
-export CLOUD_FRONTEND_URL='https://your-cloud-app.example.com'
+# staging (default) or production. Override without editing:
+#   IMAGE_ENV=production ./build.sh
+IMAGE_ENV=staging
+
+# Baked into /opt/vetura-agent/.env according to IMAGE_ENV.
+STAGING_CLOUD_API_URL='https://api-staging.vetura.app'
+STAGING_CLOUD_FRONTEND_URL='https://app-staging.vetura.app'
+PRODUCTION_CLOUD_API_URL='https://api.vetura.app'
+PRODUCTION_CLOUD_FRONTEND_URL='https://app.vetura.app'
 
 # Support SSH: public key only (private key never goes on the SD card).
 # Build fails without this. One fleet key: a leak opens every device.
@@ -13,7 +19,7 @@ PUBKEY_ONLY_SSH=1
 # Not a login password — PasswordAuthentication is disabled.
 FIRST_USER_PASS='change-me'
 
-# RSA 2048 PEM used to sign boot.img (and pieeprom if tooling allows).
+# RSA 2048 PEM used to sign boot.img (and pieeprom on production).
 # Generate: openssl genrsa 2048 > secure-boot.pem
 # Keep this file offline; never copy it into the image.
 SECURE_BOOT_KEY='/absolute/path/to/secure-boot.pem'

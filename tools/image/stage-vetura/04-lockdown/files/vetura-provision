@@ -47,10 +47,11 @@ apply_signed_boot() {
 	mkdir -p /boot/firmware
 	cp -f "${SB_DIR}/boot.img" /boot/firmware/boot.img
 	cp -f "${SB_DIR}/boot.sig" /boot/firmware/boot.sig
-	# Never flash pieeprom with SIGNED_BOOT=1 from the OS. Pi 5 only
-	# accepts that together with a pubkey programmed via rpiboot.
+	# Production images ship pieeprom.bin with SIGNED_BOOT=1. Staging does not.
 	if [ -f "${SB_DIR}/pieeprom.bin" ]; then
-		log "Ignoring ${SB_DIR}/pieeprom.bin (EEPROM lock is rpiboot-only)"
+		log "Scheduling signed EEPROM update (production lock)"
+		rpi-eeprom-update -d -f "${SB_DIR}/pieeprom.bin" || \
+			log "rpi-eeprom-update failed; boot.img is in place"
 	fi
 	return 0
 }
@@ -61,6 +62,9 @@ fi
 
 mkdir -p /boot/firmware
 touch "${LOG}"
+if [ -f /usr/lib/vetura/image-env ]; then
+	log "IMAGE_ENV=$(tr -d ' \n' </usr/lib/vetura/image-env)"
+fi
 
 if ! is_pi5; then
 	log "ERROR: this image is Raspberry Pi 5 only"
