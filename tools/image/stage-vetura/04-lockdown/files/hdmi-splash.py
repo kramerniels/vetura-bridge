@@ -24,8 +24,8 @@ FG = (15, 92, 74)
 ACCENT = (15, 92, 74)
 
 POLL_S = 2
-FADE_PERIOD_S = 3.2
-FADE_MIN = 0.28
+FADE_PERIOD_S = 4.8
+FADE_MIN = 0.82
 FRAME_S = 0.05
 FBDEV = "/dev/fb0"
 

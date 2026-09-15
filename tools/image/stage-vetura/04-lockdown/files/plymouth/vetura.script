@@ -26,17 +26,17 @@ logo.sprite = Sprite(logo.image);
 logo.sprite.SetX(screen_x + (screen_w - logo.image.GetWidth()) / 2);
 logo.sprite.SetY(screen_y + screen_h * 28 / 100);
 
-# Smooth in/out (~4s period). Avoid a 1.0/0.62 step, which looks like blinking.
+# Gentle breath (~5s period). Stay near full opacity so the logo never vanishes.
 progress = 0;
 fun refresh_callback() {
     progress = progress + 1;
-    t = progress % 80;
-    if (t > 40) {
-        t = 80 - t;
+    t = progress % 100;
+    if (t > 50) {
+        t = 100 - t;
     }
-    n = t / 40;
+    n = t / 50;
     smooth = n * n * (3 - 2 * n);
-    logo.sprite.SetOpacity(0.22 + smooth * 0.78);
+    logo.sprite.SetOpacity(0.82 + smooth * 0.18);
 }
 
 Plymouth.SetRefreshFunction(refresh_callback);
