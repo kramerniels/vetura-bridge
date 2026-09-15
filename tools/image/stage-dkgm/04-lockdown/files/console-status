@@ -1,20 +1,39 @@
 #!/bin/sh
-# HDMI has no getty; print where to reach the appliance after boot.
-ip=""
-i=0
-while [ "${i}" -lt 12 ]; do
-	ip=$(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -n1)
-	[ -n "${ip}" ] && break
-	i=$((i + 1))
-	sleep 2
-done
-if [ -z "${ip}" ]; then
-	ip="(no IPv4 — plug Ethernet)"
+# HDMI: keep splash until the portal answers, then always start the kiosk.
+# Do not abort on failed systemd units — that prevented the kiosk after reboot.
+set -eu
+export HOME="${HOME:-/var/lib/dkgm-hdmi}"
+export DISPLAY="${DISPLAY:-:0}"
+cd "${HOME}"
+
+ply_ping() {
+	sudo -n /usr/lib/dkgm/hdmi-plymouth-ctl ping >/dev/null 2>&1
+}
+
+ply_release() {
+	sudo -n /usr/lib/dkgm/hdmi-plymouth-ctl release >/dev/null 2>&1 || true
+}
+
+portal_ready() {
+	[ -f /boot/firmware/dkgm-provision.done ] || return 1
+	curl -sf -o /dev/null --max-time 2 http://127.0.0.1/
+}
+
+splash=""
+if ! ply_ping; then
+	/usr/bin/python3 -u /usr/lib/dkgm/hdmi-splash.py &
+	splash=$!
 fi
-{
-	printf '\n'
-	printf 'DKGM ready (no local login on HDMI).\n'
-	printf 'Portal: http://%s/\n' "${ip}"
-	printf 'SSH:    dkgm@%s\n' "${ip}"
-	printf '\n'
-} >/dev/console 2>/dev/null || true
+
+while ! portal_ready; do
+	sleep 1
+done
+
+if [ -n "${splash}" ]; then
+	kill "${splash}" 2>/dev/null || true
+	wait "${splash}" 2>/dev/null || true
+fi
+
+ply_release
+sleep 1
+exec /usr/lib/dkgm/kiosk

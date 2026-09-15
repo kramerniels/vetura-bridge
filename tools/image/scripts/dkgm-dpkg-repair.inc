@@ -1,5 +1,6 @@
-# Sourced from stage preruns. Recovers dpkg after a killed Docker/pi-gen apt run.
+# Sourced from stage preruns. Recovers dpkg/apt after a killed Docker/pi-gen run.
 # "dpkg was interrupted" is /var/lib/dpkg/updates; reinstreq needs --reinstall.
+# Truncated apt lists ("Unable to parse package file") need a wipe + update.
 
 if [ -d "${ROOTFS_DIR}" ]; then
 	on_chroot << 'CHROOT'
@@ -12,6 +13,14 @@ if [ -n "${pkgs}" ]; then
 fi
 apt-get -f install -y --no-install-recommends || true
 dpkg --configure -a || true
+# Partial/truncated lists from a killed fetch cannot be parsed; apt-get update
+# then refuses to run until they are removed.
+rm -rf /var/lib/apt/lists/partial
+if ! apt-get -o Acquire::Retries=3 update; then
+	rm -rf /var/lib/apt/lists/*
+	mkdir -p /var/lib/apt/lists/partial
+	apt-get -o Acquire::Retries=3 update
+fi
 CHROOT
 	if [ -d "${PREV_ROOTFS_DIR:-}" ] && on_chroot << 'CHROOT'
 dpkg --audit 2>/dev/null | grep -q 'must be reinstalled'

@@ -47,10 +47,10 @@ apply_signed_boot() {
 	mkdir -p /boot/firmware
 	cp -f "${SB_DIR}/boot.img" /boot/firmware/boot.img
 	cp -f "${SB_DIR}/boot.sig" /boot/firmware/boot.sig
+	# Never flash pieeprom with SIGNED_BOOT=1 from the OS. Pi 5 only
+	# accepts that together with a pubkey programmed via rpiboot.
 	if [ -f "${SB_DIR}/pieeprom.bin" ]; then
-		log "Scheduling signed EEPROM update"
-		rpi-eeprom-update -d -f "${SB_DIR}/pieeprom.bin" || \
-			log "rpi-eeprom-update failed; boot.img is in place"
+		log "Ignoring ${SB_DIR}/pieeprom.bin (EEPROM lock is rpiboot-only)"
 	fi
 	return 0
 }

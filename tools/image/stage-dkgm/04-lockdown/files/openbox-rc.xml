@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<openbox_config xmlns="http://openbox.org/3.4/rc">
+  <resistance>
+    <strength>0</strength>
+    <screen_edge_strength>0</screen_edge_strength>
+  </resistance>
+  <applications>
+    <application class="Chromium-browser">
+      <decor>no</decor>
+      <fullscreen>yes</fullscreen>
+    </application>
+    <application class="Chromium">
+      <decor>no</decor>
+      <fullscreen>yes</fullscreen>
+    </application>
+    <application class="chromium-browser">
+      <decor>no</decor>
+      <fullscreen>yes</fullscreen>
+    </application>
+  </applications>
+</openbox_config>

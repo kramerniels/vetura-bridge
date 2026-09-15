@@ -66,11 +66,6 @@ if [[ -z "${SECURE_BOOT_KEY:-}" || ! -f "${SECURE_BOOT_KEY}" ]]; then
   echo "SECURE_BOOT_KEY must be a readable RSA 2048 PEM (openssl genrsa 2048 > secure-boot.pem)." >&2
   exit 1
 fi
-sb_bits="$(openssl rsa -in "${SECURE_BOOT_KEY}" -text -noout 2>/dev/null | awk '/Private-Key:/{print $2}' | tr -d '()')"
-if [[ "${sb_bits}" != "2048" ]]; then
-  echo "SECURE_BOOT_KEY must be RSA 2048 (got: ${sb_bits:-unknown})." >&2
-  exit 1
-fi
 
 if [[ -z "${FIRST_USER_PASS:-}" || "${FIRST_USER_PASS}" == "change-me" ]]; then
   FIRST_USER_PASS="$(openssl rand -base64 33)"
@@ -103,24 +98,13 @@ else
   git -C "${PIGEN_DIR}" reset --hard "origin/${PIGEN_BRANCH}"
 fi
 
-# pi-gen's Docker image has xxd but not openssl. Signing boot.img without it
-# wrote an empty rsa2048 line; Pi 5 firmware then reports Error 12.
-if ! grep -qE '[[:space:]]openssl([[:space:]\\]|$)' "${PIGEN_DIR}/Dockerfile"; then
-  awk '{
-    if ($0 ~ /arch-test \\$/) sub(/arch-test \\/, "arch-test openssl \\")
-    print
-  }' "${PIGEN_DIR}/Dockerfile" > "${PIGEN_DIR}/Dockerfile.dkgm"
-  mv "${PIGEN_DIR}/Dockerfile.dkgm" "${PIGEN_DIR}/Dockerfile"
-fi
-
 echo "==> Installing stage-dkgm into pi-gen worktree"
 rm -rf "${STAGE_DST}"
 cp -a "${STAGE_SRC}" "${STAGE_DST}"
 # Ensure stage scripts are executable
 find "${STAGE_DST}" -type f \( -name 'prerun.sh' -o -name '*-run.sh' -o -name '*-run-chroot.sh' \) -exec chmod +x {} +
 
-# Stock stages run before stage-dkgm. CONTINUE reuses a work volume whose dpkg
-# may be interrupted in stage0–2; repair there, not only in stage-dkgm.
+# CONTINUE reuses a work volume whose apt lists / dpkg may be truncated.
 cp "${SCRIPT_DIR}/scripts/dkgm-dpkg-repair.inc" "${PIGEN_DIR}/scripts/dkgm-dpkg-repair.inc"
 dkgm_append_dpkg_repair() {
   local prerun="$1"
@@ -163,11 +147,59 @@ chmod 600 "${PIGEN_DIR}/.dkgm-sb-key.pem"
 cp "${SCRIPT_DIR}/scripts/rpi-eeprom-digest" "${PIGEN_DIR}/dkgm-rpi-eeprom-digest"
 chmod 755 "${PIGEN_DIR}/dkgm-rpi-eeprom-digest"
 
+# Reuse one pi-gen builder image. COPY . /pi-gen/ changed every run, left
+# dangling ~889MB images, and baked the signing PEM into Docker layers.
+dkgm_patch_pigen_docker() {
+  local df="${PIGEN_DIR}/Dockerfile"
+  local bd="${PIGEN_DIR}/build-docker.sh"
+  awk '
+    /COPY \. \/pi-gen\// { next }
+    /arch-test \\$/ { sub(/arch-test \\/, "arch-test openssl \\") }
+    { print }
+  ' "${df}" > "${df}.dkgm"
+  mv "${df}.dkgm" "${df}"
+  if ! grep -q '${DIR}:/pi-gen' "${bd}"; then
+    python3 - "${bd}" <<'PY'
+import pathlib, sys
+path = pathlib.Path(sys.argv[1])
+text = path.read_text()
+old = '  --volume "${CONFIG_FILE}":/config:ro \\\n'
+new = '  --volume "${DIR}:/pi-gen" \\\n  --volume "${CONFIG_FILE}":/config:ro \\\n'
+if old not in text:
+    sys.exit("build-docker.sh: expected config volume line not found")
+path.write_text(text.replace(old, new, 1))
+PY
+  fi
+}
+dkgm_patch_pigen_docker
+
+# Keep only the newest flash artifact (dated image_*.img.xz pile up otherwise).
+# KEEP_OLD_IMAGES=1 skips this.
+dkgm_prune_old_flash_images() {
+  local dir="$1"
+  [[ "${KEEP_OLD_IMAGES:-}" == "1" ]] && return 0
+  [[ -d "${dir}" ]] || return 0
+  local newest stem datepart
+  newest="$(ls -t "${dir}"/image_*.img.xz 2>/dev/null | head -1 || true)"
+  [[ -n "${newest}" ]] || return 0
+  stem="$(basename "${newest}" .img.xz)"
+  datepart="${stem#image_}"
+  find "${dir}" -maxdepth 1 -type f \( -name 'image_*.img.xz' -o -name 'image_*.img' \) \
+    ! -name "$(basename "${newest}")" -print -delete
+  find "${dir}" -maxdepth 1 -type f -name '*-dkgm-pi-lite.info' \
+    ! -name "${datepart}.info" -print -delete
+}
+
 mkdir -p "${OUT_DIR}"
+echo "==> Removing older flash images (KEEP_OLD_IMAGES=1 to keep them)"
+dkgm_prune_old_flash_images "${PIGEN_DIR}/deploy"
+dkgm_prune_old_flash_images "${OUT_DIR}"
+if docker image prune -f >/dev/null; then
+  echo "==> Removed dangling Docker images"
+fi
 
 # build-docker.sh exits before `docker rm` when the build fails, which would
 # otherwise abort the next run. Resume that work volume (stage0–2 stay cached).
-# Dirty dpkg after a kill is repaired in stage preruns.
 # Full clean rebuild: CLEAN=1 ./build.sh
 if [[ "${CLEAN:-}" == "1" ]]; then
   echo "==> CLEAN=1: removing leftover pigen_work"
@@ -186,9 +218,11 @@ echo "==> Building image (pi-gen build-docker.sh) — this can take a long time"
 echo "==> Collecting artifacts into ${OUT_DIR}"
 # build-docker.sh extracts deploy/ next to pi-gen; copy into tools/image/deploy
 if [[ -d "${PIGEN_DIR}/deploy" ]]; then
+  dkgm_prune_old_flash_images "${PIGEN_DIR}/deploy"
   rm -rf "${OUT_DIR}"
   mkdir -p "${OUT_DIR}"
   cp -a "${PIGEN_DIR}/deploy/." "${OUT_DIR}/"
+  dkgm_prune_old_flash_images "${OUT_DIR}"
 fi
 
 echo "Done. Flash an image from ${OUT_DIR}/ (see README.md)."

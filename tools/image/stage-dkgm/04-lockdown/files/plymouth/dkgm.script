@@ -1,0 +1,39 @@
+# Logo only: Image.Text needs pango/fonts in initramfs and aborts the
+# theme if they are missing (then HDMI shows raw systemd).
+Window.SetBackgroundTopColor(0.059, 0.110, 0.090);
+Window.SetBackgroundBottomColor(0.059, 0.110, 0.090);
+
+screen_w = Window.GetWidth();
+screen_h = Window.GetHeight();
+screen_x = Window.GetX();
+screen_y = Window.GetY();
+
+logo.image = Image("logo.png");
+ow = logo.image.GetWidth();
+oh = logo.image.GetHeight();
+max_w = screen_w * 72 / 100;
+max_h = screen_h * 34 / 100;
+nw = max_w;
+nh = oh * nw / ow;
+if (nh > max_h) {
+    nh = max_h;
+    nw = ow * nh / oh;
+}
+if (nw < 1) { nw = 1; }
+if (nh < 1) { nh = 1; }
+logo.image = logo.image.Scale(nw, nh);
+logo.sprite = Sprite(logo.image);
+logo.sprite.SetX(screen_x + (screen_w - logo.image.GetWidth()) / 2);
+logo.sprite.SetY(screen_y + screen_h * 28 / 100);
+
+progress = 0;
+fun refresh_callback() {
+    progress = progress + 1;
+    if (progress % 40 < 22) {
+        logo.sprite.SetOpacity(1);
+    } else {
+        logo.sprite.SetOpacity(0.62);
+    }
+}
+
+Plymouth.SetRefreshFunction(refresh_callback);

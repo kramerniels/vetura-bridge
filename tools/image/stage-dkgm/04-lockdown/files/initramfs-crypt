@@ -142,7 +142,23 @@ find_luks_src() {
 say() {
 	_msg="dkgm-crypt: $*"
 	echo "${_msg}" >>"${BOOT_MP}/dkgm-crypt.log" 2>/dev/null || true
-	echo "${_msg}" >/dev/console 2>/dev/null || echo "${_msg}"
+	if command -v plymouth >/dev/null 2>&1 && plymouth --ping 2>/dev/null; then
+		plymouth display-message --text="$*" 2>/dev/null || true
+	else
+		echo "${_msg}" >/dev/console 2>/dev/null || echo "${_msg}"
+	fi
+}
+
+# Show the panic on a raw console; Plymouth would hide it.
+dkgm_fail() {
+	_msg="$*"
+	echo "dkgm-crypt: ${_msg}" >>"${BOOT_MP}/dkgm-crypt.log" 2>/dev/null || true
+	if command -v plymouth >/dev/null 2>&1; then
+		plymouth display-message --text="${_msg}" 2>/dev/null || true
+		sleep 2
+		plymouth quit 2>/dev/null || true
+	fi
+	panic "${_msg}"
 }
 
 run_keyscript() {
@@ -170,28 +186,27 @@ ensure_fw_crypto() {
 		sleep 1
 		n=$((n + 1))
 	done
-	panic "dkgm-crypt: /dev/vcio missing (firmware mailbox); cannot derive LUKS key"
+	dkgm_fail "dkgm-crypt: /dev/vcio missing (firmware mailbox); cannot derive LUKS key"
 }
 
 open_luks() {
 	dev="$1"
-	say "opening LUKS ${dev} -> /dev/mapper/${MAPPER}"
+	say "Schijf ontgrendelen"
 	if [ ! -x "${KEYSCRIPT}" ]; then
-		panic "dkgm-crypt: missing ${KEYSCRIPT}"
+		dkgm_fail "dkgm-crypt: missing ${KEYSCRIPT}"
 	fi
-	wait_block "${dev}" || panic "dkgm-crypt: LUKS device ${dev} not present"
+	wait_block "${dev}" || dkgm_fail "dkgm-crypt: LUKS device ${dev} not present"
 	ensure_fw_crypto
-	pass=$(run_keyscript) || panic "dkgm-crypt: passphrase derivation failed"
+	pass=$(run_keyscript) || dkgm_fail "dkgm-crypt: passphrase derivation failed"
 	load_crypt_modules
 	printf '%s' "${pass}" | cryptsetup open "${dev}" "${MAPPER}" --key-file=- \
-		|| panic "dkgm-crypt: cryptsetup open failed"
+		|| dkgm_fail "dkgm-crypt: cryptsetup open failed"
 	say "LUKS open ok"
 }
 
 encrypt_root() {
 	dev="$1"
-	log_begin_msg "DKGM: encrypting root (several minutes)"
-	say "encrypting ${dev} - do not power off"
+	say "Schijf versleutelen — niet uitschakelen"
 
 	e2fsck -f -y "${dev}" || true
 
@@ -201,39 +216,39 @@ encrypt_root() {
 	blocks=$(dumpe2fs -h "${dev}" 2>/dev/null | awk '/Block count/ {print $3}')
 	bsize=$(dumpe2fs -h "${dev}" 2>/dev/null | awk '/Block size/ {print $3}')
 	if [ -z "${blocks}" ] || [ -z "${bsize}" ]; then
-		panic "dkgm-crypt: cannot read ext4 size from ${dev}"
+		dkgm_fail "dkgm-crypt: cannot read ext4 size from ${dev}"
 	fi
 	bytes=$((blocks * bsize))
 	shrink_bytes=$((bytes - 64 * 1024 * 1024))
 	if [ "${shrink_bytes}" -le 1048576 ]; then
-		panic "dkgm-crypt: ${dev} too small to leave LUKS header space"
+		dkgm_fail "dkgm-crypt: ${dev} too small to leave LUKS header space"
 	fi
-	say "shrinking filesystem for LUKS header"
+	say "Schijf voorbereiden"
 	resize2fs -f "${dev}" $((shrink_bytes / 1024))K \
-		|| panic "dkgm-crypt: resize2fs failed"
+		|| dkgm_fail "dkgm-crypt: resize2fs failed"
 
 	say "waiting for firmware mailbox"
 	ensure_fw_crypto
 	say "deriving LUKS passphrase"
-	pass=$(run_keyscript) || panic "dkgm-crypt: passphrase derivation failed"
+	pass=$(run_keyscript) || dkgm_fail "dkgm-crypt: passphrase derivation failed"
 	load_crypt_modules
 	# pbkdf2: LUKS2 default argon2id tries to use ~1GiB RAM and looks hung
 	# in initramfs (no progress). Passphrase is already high-entropy HMAC.
-	say "LUKS encrypt starting (pbkdf2, then data; progress on console)"
+	say "Bezig met versleutelen — niet uitschakelen"
 	printf '%s' "${pass}" | cryptsetup -v reencrypt --encrypt --type luks2 \
 		--cipher aes-xts-plain64 --key-size 256 \
 		--pbkdf pbkdf2 --hash sha256 --iter-time 500 \
 		--reduce-device-size 32M --batch-mode --progress-frequency 5 \
-		--key-file=- "${dev}" >/dev/console 2>/dev/console \
-		|| panic "dkgm-crypt: LUKS encrypt failed"
-	say "encrypt finished, updating fstab and rebooting"
+		--key-file=- "${dev}" >>"${BOOT_MP}/dkgm-crypt.log" 2>&1 \
+		|| dkgm_fail "dkgm-crypt: LUKS encrypt failed"
+	say "Klaar, herstarten…"
 
 	printf '%s' "${pass}" | cryptsetup open "${dev}" "${MAPPER}" --key-file=- \
-		|| panic "dkgm-crypt: open after encrypt failed"
+		|| dkgm_fail "dkgm-crypt: open after encrypt failed"
 
 	mkdir -p /run/dkgm-root
 	mount -t ext4 "/dev/mapper/${MAPPER}" /run/dkgm-root \
-		|| panic "dkgm-crypt: mount after encrypt failed"
+		|| dkgm_fail "dkgm-crypt: mount after encrypt failed"
 
 	if [ -f /run/dkgm-root/etc/fstab ]; then
 		sed -i -E 's|^[^#][^[:space:]]+[[:space:]]+/[[:space:]]|/dev/mapper/cryptroot / |' \
@@ -259,7 +274,6 @@ encrypt_root() {
 	rm -f "${PENDING}"
 	printf '%s\n' "secure-boot" >"${BOOT_MP}/dkgm-provision-next"
 	sync
-	log_end_msg
 	umount "${BOOT_MP}" 2>/dev/null || true
 	reboot -f
 }
@@ -267,7 +281,7 @@ encrypt_root() {
 mount_boot || true
 
 if [ -f "${PENDING}" ]; then
-	dev=$(resolve_plain_root) || panic "dkgm-crypt: cannot find root partition to encrypt"
+	dev=$(resolve_plain_root) || dkgm_fail "dkgm-crypt: cannot find root partition to encrypt"
 	encrypt_root "${dev}"
 fi
 

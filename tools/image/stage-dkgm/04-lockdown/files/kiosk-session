@@ -1,0 +1,54 @@
+#!/bin/sh
+# X11 client: window manager + Chromium kiosk of the local portal.
+# GPU/KMS is disabled; Chromium uses software rendering.
+set -eu
+
+xset -dpms s off s noblank 2>/dev/null || true
+xset s 0 0 2>/dev/null || true
+
+if command -v openbox >/dev/null 2>&1; then
+	openbox --config-file /usr/lib/dkgm/openbox-rc.xml &
+	sleep 0.3
+fi
+
+bin=""
+for c in /usr/bin/chromium /usr/bin/chromium-browser; do
+	if [ -x "${c}" ]; then
+		bin="${c}"
+		break
+	fi
+done
+if [ -z "${bin}" ]; then
+	echo "dkgm-kiosk: chromium not found" >&2
+	exit 1
+fi
+
+mkdir -p "${HOME}/.config/dkgm-kiosk"
+rm -f "${HOME}/.config/dkgm-kiosk/SingletonLock" \
+	"${HOME}/.config/dkgm-kiosk/SingletonSocket" \
+	"${HOME}/.config/dkgm-kiosk/SingletonCookie"
+
+exec "${bin}" \
+	--user-data-dir="${HOME}/.config/dkgm-kiosk" \
+	--kiosk \
+	--app=http://127.0.0.1/ \
+	--start-fullscreen \
+	--window-position=0,0 \
+	--no-first-run \
+	--no-default-browser-check \
+	--disable-sync \
+	--disable-infobars \
+	--disable-features=Translate,TranslateUI,InfiniteSessionRestore \
+	--disable-session-crashed-bubble \
+	--hide-crash-restore-bubble \
+	--disable-restore-session-state \
+	--disable-gpu \
+	--disable-gpu-compositing \
+	--in-process-gpu \
+	--ozone-platform=x11 \
+	--disable-dev-shm-usage \
+	--check-for-update-interval=31536000 \
+	--overscroll-history-navigation=0 \
+	--password-store=basic \
+	--autoplay-policy=no-user-gesture-required \
+	--lang=nl

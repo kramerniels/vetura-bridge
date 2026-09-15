@@ -1,12 +1,29 @@
 [Unit]
-Description=DKGM HDMI status (no getty on this appliance)
-After=network.target
-Wants=dkgm-agent.service
+Description=DKGM HDMI (splash, then portal kiosk)
+After=local-fs.target network.target dkgm-agent.service plymouth-start.service
+Wants=dkgm-agent.service plymouth-start.service
 
 [Service]
-Type=oneshot
+Type=simple
+User=dkgm-hdmi
+Group=dkgm-hdmi
+SupplementaryGroups=video render input tty
+WorkingDirectory=/var/lib/dkgm-hdmi
+RuntimeDirectory=dkgm-hdmi
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+StandardInput=tty
+StandardOutput=journal
+StandardError=journal
+Environment=HOME=/var/lib/dkgm-hdmi
+Environment=XDG_RUNTIME_DIR=/run/dkgm-hdmi
+Environment=DISPLAY=:0
 ExecStart=/usr/lib/dkgm/console-status
-RemainAfterExit=yes
+Restart=always
+RestartSec=2
+StartLimitBurst=20
+StartLimitIntervalSec=120
 
 [Install]
 WantedBy=multi-user.target

@@ -8,3 +8,15 @@ mtools
 xxd
 rpifwcrypto
 device-tree-compiler
+python3
+python3-pil
+fonts-dejavu-core
+curl
+plymouth
+xserver-xorg-core
+xserver-xorg-video-fbdev
+xserver-xorg-legacy
+xinit
+x11-xserver-utils
+openbox
+chromium

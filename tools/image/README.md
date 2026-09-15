@@ -5,8 +5,10 @@ preinstalled. This is the **only** first-install path for devices. App updates
 after pairing go over NATS (see [commands.md](../../commands.md)).
 
 The image is an appliance: SSH is **pubkey-only** (your support key), HDMI/serial
-have no login, root is **LUKS** bound to this Pi + this SD card, and **signed
-boot** rejects a tweaked boot partition. There is no overlay filesystem.
+have no login, HDMI shows a Plymouth splash then a Chromium kiosk of the local
+portal, and root is **LUKS** bound to this Pi + this SD card. Signed
+`boot.img` / `boot.sig` are baked in for a later `rpiboot` EEPROM lock; first
+boot does not enable `SIGNED_BOOT`. There is no overlay filesystem.
 
 | Included | Not included (per device) |
 |----------|---------------------------|
@@ -73,26 +75,23 @@ This will:
 4. Run `build-docker.sh` (Lite stages + `stage-dkgm`, including lockdown + signed `boot.img`)
 5. Copy artifacts to [`deploy/`](./deploy/)
 
-Output is typically `deploy/dkgm-pi-*.img.xz`.
-
-If a previous run was killed mid-`apt`, the next `./build.sh` reuses the Docker
-work container and repairs `dpkg` first. For a full rebuild (drops the cached
-Lite stages too):
-
-```bash
-CLEAN=1 ./build.sh
-```
+Output is typically `deploy/dkgm-pi-*.img.xz`. Older dated `.img.xz` files in
+`deploy/` are removed after each successful build (the work container for
+stage0–2 is still reused on `CONTINUE`). Keep history with `KEEP_OLD_IMAGES=1`.
+Full rebuild from stage0: `CLEAN=1 ./build.sh`.
 
 ## Flash and first boot
 
 1. Write the image to an SD card (Raspberry Pi Imager, Etcher, `dd`)
 2. Boot a **Pi 5** on **Ethernet** (no Wi‑Fi SSID is baked in). HDMI has **no
-   login**: the last systemd line (often `cloud-init.target`) stays on screen.
-   That is not a hang. Find the IP on your router and open `http://<ip>/` or SSH.
+   login**. A branded Plymouth splash covers boot (including LUKS); kernel/OK
+   lines stay hidden. Afterwards HDMI is a Chromium kiosk of the local portal
+   (QR). You can still open `http://<ip>/` from another device. Support SSH is
+   not shown on the display.
 3. First boot takes **several extra minutes** and **reboots more than once**:
    1. OTP device key (one-time, irreversible)
    2. Initramfs LUKS-encrypts the root partition (passphrase = HMAC of OTP key + SD CID)
-   3. Install signed `boot.img` + EEPROM (`SIGNED_BOOT`); `program_pubkey=1` fuses the customer key
+   3. Install signed `boot.img` / `boot.sig` on the FAT partition. The EEPROM is **not** switched to `SIGNED_BOOT` here: on Pi 5 that lock requires `rpiboot` with the customer pubkey in the EEPROM. Flashing `SIGNED_BOOT=1` without it bricks the board (Error 12) until an EEPROM recovery.
 4. When provision has finished (`/boot/firmware/dkgm-provision.done`), the portal is
    on port 80: `http://<pi-ip>/` or mDNS → scan QR → pair
 5. Further app updates: NATS `update` ([commands.md](../../commands.md)) — files
@@ -104,7 +103,9 @@ Support SSH (after provision):
 ssh -i ~/.ssh/dkgm-support dkgm@<pi-ip>
 ```
 
-HDMI and serial have **no login prompt**. Kernel messages may still appear.
+HDMI and serial have **no login prompt**. Plymouth shows the clinic logo until the
+portal is up; then Chromium kiosk on the firmware framebuffer (no GPU). Support
+SSH still works with your key; it is not shown on the display.
 
 ## What a user with a card reader can and cannot do
 
@@ -112,14 +113,14 @@ HDMI and serial have **no login prompt**. Kernel messages may still appear.
 |--------|--------|
 | Mount the FAT boot partition | Visible (firmware, `boot.img`). Cannot forge a valid `boot.sig` without your signing key. |
 | Mount root on a PC | LUKS; no files without this Pi's OTP key |
-| Put a tweaked boot back in **this** Pi | Signed boot refuses it (after OTP fuse) |
+| Put a tweaked boot back in **this** Pi | After a future `rpiboot` EEPROM lock, signed boot refuses it |
 | SSH without your private key | Denied |
 
 ## Recovery
 
-- **Before** signed-boot OTP fuse: reflash the SD card.
-- **After** fuse (`secure-boot: flags 1` on the diagnostic screen): the FAT partition must contain `boot.img` + `boot.sig` signed with the **same** RSA key that was fused. A new PEM will not boot that Pi. Keep `secure-boot.pem` offline and backed up. Error 6 loading `boot.img` means the pair is missing, unreadable, or signed with the wrong key.
-- Unplug extra USB storage while flashing/booting; the bootloader may try USB-MSD before the SD slot is useful.
+- EEPROM `SIGNED_BOOT` without a pubkey: Raspberry Pi Imager → Misc utility images → Bootloader (Pi 5 family). Green screen = factory EEPROM.
+- **After** a real OTP fuse (`program_pubkey` via `rpiboot`): only images signed with the same RSA key will boot. Keep `secure-boot.pem` offline and backed up.
+- A fused Pi loads `boot.img` + `boot.sig` from the FAT partition before Linux. A reflash without that pair (or signed with a different PEM) stops at `Error 6` / `Error 12`. The image build puts a ≤128 MB pair on FAT.
 - A failed LUKS encrypt (power loss): reflash. Check `/var/log/dkgm-provision.log` if the system still boots unsigned.
 
 ## Layout
