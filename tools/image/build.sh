@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the DKGM Raspberry Pi OS golden image via pi-gen (Docker).
+# Build the Vetura Raspberry Pi OS golden image via pi-gen (Docker).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -7,9 +7,9 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 PIGEN_DIR="${SCRIPT_DIR}/.pi-gen"
 PIGEN_REPO="${PIGEN_REPO:-https://github.com/RPi-Distro/pi-gen.git}"
 PIGEN_BRANCH="${PIGEN_BRANCH:-arm64}"
-STAGE_SRC="${SCRIPT_DIR}/stage-dkgm"
-STAGE_DST="${PIGEN_DIR}/stage-dkgm"
-PACKAGE_FILES="${STAGE_SRC}/02-dkgm-agent/files"
+STAGE_SRC="${SCRIPT_DIR}/stage-vetura"
+STAGE_DST="${PIGEN_DIR}/stage-vetura"
+PACKAGE_FILES="${STAGE_SRC}/02-vetura-agent/files"
 OUT_DIR="${SCRIPT_DIR}/deploy"
 
 if ! command -v docker >/dev/null 2>&1; then
@@ -98,30 +98,30 @@ else
   git -C "${PIGEN_DIR}" reset --hard "origin/${PIGEN_BRANCH}"
 fi
 
-echo "==> Installing stage-dkgm into pi-gen worktree"
+echo "==> Installing stage-vetura into pi-gen worktree"
 rm -rf "${STAGE_DST}"
 cp -a "${STAGE_SRC}" "${STAGE_DST}"
 # Ensure stage scripts are executable
 find "${STAGE_DST}" -type f \( -name 'prerun.sh' -o -name '*-run.sh' -o -name '*-run-chroot.sh' \) -exec chmod +x {} +
 
 # CONTINUE reuses a work volume whose apt lists / dpkg may be truncated.
-cp "${SCRIPT_DIR}/scripts/dkgm-dpkg-repair.inc" "${PIGEN_DIR}/scripts/dkgm-dpkg-repair.inc"
-dkgm_append_dpkg_repair() {
+cp "${SCRIPT_DIR}/scripts/vetura-dpkg-repair.inc" "${PIGEN_DIR}/scripts/vetura-dpkg-repair.inc"
+vetura_append_dpkg_repair() {
   local prerun="$1"
   [[ -f "${prerun}" ]] || return 0
-  grep -q 'dkgm-dpkg-repair' "${prerun}" && return 0
+  grep -q 'vetura-dpkg-repair' "${prerun}" && return 0
   cat >> "${prerun}" << 'EOF'
 
-# dkgm-dpkg-repair
+# vetura-dpkg-repair
 # shellcheck disable=SC1091
-. "${SCRIPT_DIR}/dkgm-dpkg-repair.inc"
+. "${SCRIPT_DIR}/vetura-dpkg-repair.inc"
 EOF
 }
-dkgm_append_dpkg_repair "${PIGEN_DIR}/stage0/prerun.sh"
-dkgm_append_dpkg_repair "${PIGEN_DIR}/stage1/prerun.sh"
-dkgm_append_dpkg_repair "${PIGEN_DIR}/stage2/prerun.sh"
+vetura_append_dpkg_repair "${PIGEN_DIR}/stage0/prerun.sh"
+vetura_append_dpkg_repair "${PIGEN_DIR}/stage1/prerun.sh"
+vetura_append_dpkg_repair "${PIGEN_DIR}/stage2/prerun.sh"
 
-# Lite image only: skip desktop stages; export after stage-dkgm (not stage2)
+# Lite image only: skip desktop stages; export after stage-vetura (not stage2)
 touch "${PIGEN_DIR}/stage3/SKIP" "${PIGEN_DIR}/stage4/SKIP" "${PIGEN_DIR}/stage5/SKIP"
 touch "${PIGEN_DIR}/stage2/SKIP_IMAGES"
 # stage4/5 also have EXPORT_*; keep SKIP_IMAGES for safety if STAGE_LIST is overridden
@@ -141,23 +141,23 @@ echo "==> Merging config + config.local into pi-gen"
   printf "FIRST_USER_PASS=%q\n" "${FIRST_USER_PASS}"
 } > "${PIGEN_DIR}/config"
 
-# Signing key and digest tool for stage-dkgm/05-secure-boot (never copied into rootfs).
-cp "${SECURE_BOOT_KEY}" "${PIGEN_DIR}/.dkgm-sb-key.pem"
-chmod 600 "${PIGEN_DIR}/.dkgm-sb-key.pem"
-cp "${SCRIPT_DIR}/scripts/rpi-eeprom-digest" "${PIGEN_DIR}/dkgm-rpi-eeprom-digest"
-chmod 755 "${PIGEN_DIR}/dkgm-rpi-eeprom-digest"
+# Signing key and digest tool for stage-vetura/05-secure-boot (never copied into rootfs).
+cp "${SECURE_BOOT_KEY}" "${PIGEN_DIR}/.vetura-sb-key.pem"
+chmod 600 "${PIGEN_DIR}/.vetura-sb-key.pem"
+cp "${SCRIPT_DIR}/scripts/rpi-eeprom-digest" "${PIGEN_DIR}/vetura-rpi-eeprom-digest"
+chmod 755 "${PIGEN_DIR}/vetura-rpi-eeprom-digest"
 
 # Reuse one pi-gen builder image. COPY . /pi-gen/ changed every run, left
 # dangling ~889MB images, and baked the signing PEM into Docker layers.
-dkgm_patch_pigen_docker() {
+vetura_patch_pigen_docker() {
   local df="${PIGEN_DIR}/Dockerfile"
   local bd="${PIGEN_DIR}/build-docker.sh"
   awk '
     /COPY \. \/pi-gen\// { next }
     /arch-test \\$/ { sub(/arch-test \\/, "arch-test openssl \\") }
     { print }
-  ' "${df}" > "${df}.dkgm"
-  mv "${df}.dkgm" "${df}"
+  ' "${df}" > "${df}.vetura"
+  mv "${df}.vetura" "${df}"
   if ! grep -q '${DIR}:/pi-gen' "${bd}"; then
     python3 - "${bd}" <<'PY'
 import pathlib, sys
@@ -171,11 +171,11 @@ path.write_text(text.replace(old, new, 1))
 PY
   fi
 }
-dkgm_patch_pigen_docker
+vetura_patch_pigen_docker
 
 # Keep only the newest flash artifact (dated image_*.img.xz pile up otherwise).
 # KEEP_OLD_IMAGES=1 skips this.
-dkgm_prune_old_flash_images() {
+vetura_prune_old_flash_images() {
   local dir="$1"
   [[ "${KEEP_OLD_IMAGES:-}" == "1" ]] && return 0
   [[ -d "${dir}" ]] || return 0
@@ -186,14 +186,14 @@ dkgm_prune_old_flash_images() {
   datepart="${stem#image_}"
   find "${dir}" -maxdepth 1 -type f \( -name 'image_*.img.xz' -o -name 'image_*.img' \) \
     ! -name "$(basename "${newest}")" -print -delete
-  find "${dir}" -maxdepth 1 -type f -name '*-dkgm-pi-lite.info' \
+  find "${dir}" -maxdepth 1 -type f -name '*-vetura-pi-lite.info' \
     ! -name "${datepart}.info" -print -delete
 }
 
 mkdir -p "${OUT_DIR}"
 echo "==> Removing older flash images (KEEP_OLD_IMAGES=1 to keep them)"
-dkgm_prune_old_flash_images "${PIGEN_DIR}/deploy"
-dkgm_prune_old_flash_images "${OUT_DIR}"
+vetura_prune_old_flash_images "${PIGEN_DIR}/deploy"
+vetura_prune_old_flash_images "${OUT_DIR}"
 if docker image prune -f >/dev/null; then
   echo "==> Removed dangling Docker images"
 fi
@@ -218,11 +218,11 @@ echo "==> Building image (pi-gen build-docker.sh) — this can take a long time"
 echo "==> Collecting artifacts into ${OUT_DIR}"
 # build-docker.sh extracts deploy/ next to pi-gen; copy into tools/image/deploy
 if [[ -d "${PIGEN_DIR}/deploy" ]]; then
-  dkgm_prune_old_flash_images "${PIGEN_DIR}/deploy"
+  vetura_prune_old_flash_images "${PIGEN_DIR}/deploy"
   rm -rf "${OUT_DIR}"
   mkdir -p "${OUT_DIR}"
   cp -a "${PIGEN_DIR}/deploy/." "${OUT_DIR}/"
-  dkgm_prune_old_flash_images "${OUT_DIR}"
+  vetura_prune_old_flash_images "${OUT_DIR}"
 fi
 
 echo "Done. Flash an image from ${OUT_DIR}/ (see README.md)."

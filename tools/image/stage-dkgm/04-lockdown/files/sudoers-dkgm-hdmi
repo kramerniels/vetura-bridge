@@ -1,3 +1,0 @@
-# HDMI kiosk user may only drive the splash helper.
-Defaults:dkgm-hdmi !requiretty
-dkgm-hdmi ALL=(root) NOPASSWD: /usr/lib/dkgm/hdmi-plymouth-ctl

@@ -1,0 +1,29 @@
+[Unit]
+Description=Vetura HDMI (splash, then portal kiosk)
+After=local-fs.target network.target vetura-agent.service plymouth-start.service
+Wants=vetura-agent.service plymouth-start.service
+
+[Service]
+Type=simple
+User=vetura-hdmi
+Group=vetura-hdmi
+SupplementaryGroups=video render input tty
+WorkingDirectory=/var/lib/vetura-hdmi
+RuntimeDirectory=vetura-hdmi
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+StandardInput=tty
+StandardOutput=journal
+StandardError=journal
+Environment=HOME=/var/lib/vetura-hdmi
+Environment=XDG_RUNTIME_DIR=/run/vetura-hdmi
+Environment=DISPLAY=:0
+ExecStart=/usr/lib/vetura/console-status
+Restart=always
+RestartSec=2
+StartLimitBurst=20
+StartLimitIntervalSec=120
+
+[Install]
+WantedBy=multi-user.target

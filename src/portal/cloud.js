@@ -1,6 +1,7 @@
 const http = require("http");
 const https = require("https");
 const { URL } = require("url");
+const { friendlyCloudError } = require("./cloud-error");
 
 const DEFAULT_POLL_MS = 3000;
 const DEFAULT_REGISTER_RETRY_MS = 10000;
@@ -155,6 +156,7 @@ function startCloudLoop(identity, handlers = {}) {
         registered: false,
         stopped: false,
         lastError: null,
+        userError: null,
         lastRegisterAt: null,
         lastPollAt: null,
     };
@@ -167,6 +169,7 @@ function startCloudLoop(identity, handlers = {}) {
             registered: false,
             stopped: true,
             lastError: err.message,
+            userError: friendlyCloudError(err),
             lastRegisterAt: null,
             lastPollAt: null,
         };
@@ -188,6 +191,7 @@ function startCloudLoop(identity, handlers = {}) {
                 status.registered = true;
                 status.lastRegisterAt = new Date().toISOString();
                 status.lastError = null;
+                status.userError = null;
                 if (handlers.onRegistered) handlers.onRegistered();
             }
 
@@ -195,6 +199,7 @@ function startCloudLoop(identity, handlers = {}) {
             const result = await fetchBootstrap(identity);
             if (result.ready) {
                 status.lastError = null;
+                status.userError = null;
                 if (handlers.onBootstrap) {
                     const done = await handlers.onBootstrap(result.payload);
                     // Stop polling only when pairing actually succeeded. (new timeout is not set.)
@@ -204,8 +209,10 @@ function startCloudLoop(identity, handlers = {}) {
                 }
             }
             status.lastError = null;
+            status.userError = null;
         } catch (err) {
             status.lastError = err.message;
+            status.userError = friendlyCloudError(err);
             if (handlers.onError) handlers.onError(err);
         }
 

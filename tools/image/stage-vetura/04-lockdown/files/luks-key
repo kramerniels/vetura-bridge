@@ -1,0 +1,34 @@
+#!/bin/sh
+# Print a LUKS passphrase derived from the Pi OTP key and this SD card's CID.
+# Used from initramfs and from the first-boot provisioner. No trailing newline.
+set -eu
+
+mkdir -p /tmp
+
+cid=""
+for path in /sys/block/mmcblk0/device/cid /sys/block/mmcblk1/device/cid; do
+	if [ -f "${path}" ]; then
+		cid=$(tr -d '\n' <"${path}")
+		break
+	fi
+done
+
+if [ -z "${cid}" ]; then
+	echo "vetura-luks-key: MMC CID not found" >&2
+	exit 1
+fi
+
+if ! command -v rpi-fw-crypto >/dev/null 2>&1; then
+	echo "vetura-luks-key: rpi-fw-crypto not found" >&2
+	exit 1
+fi
+
+if [ ! -e /dev/vcio_crypto ] && [ ! -e /dev/vcio ]; then
+	echo "vetura-luks-key: /dev/vcio missing (firmware mailbox)" >&2
+	exit 1
+fi
+
+tmp=$(mktemp)
+trap 'rm -f "${tmp}"' EXIT
+printf '%s' "${cid}" >"${tmp}"
+rpi-fw-crypto hmac --in "${tmp}" --key-id 1 --outform hex | tr -d '\n'

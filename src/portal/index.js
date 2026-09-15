@@ -4,7 +4,7 @@ const { createSetupServer } = require("./server");
 const { applyPairing, configFromBootstrap } = require("./apply");
 const { createWorkerManager } = require("./worker-manager");
 
-const PORT = process.platform === "darwin" || process.platform === "win32" ? 8080 : 80;
+const PORT = process.platform === "darwin" || process.platform === "win32" ? 8081 : 80;
 const HOST = "0.0.0.0";
 
 async function main() {
@@ -118,7 +118,7 @@ async function main() {
                 shortId: identity.shortId,
                 state: identity.state,
                 pairUrl: ctx.pairUrl,
-                mdns: `dkgm-${identity.shortId}.local`,
+                mdns: `vetura-${identity.shortId}.local`,
             }),
         );
     });

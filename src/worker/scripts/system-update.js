@@ -2,7 +2,7 @@ const { z } = require("zod");
 const { readStdin } = require("./lib/read-stdin");
 const { runSudoHelper } = require("./lib/run-sudo-helper");
 
-const HELPER_PATH = "/usr/local/sbin/dkgm-agent-system-update";
+const HELPER_PATH = "/usr/local/sbin/vetura-agent-system-update";
 const timeoutMs = 45 * 60 * 1000;
 
 const schema = z

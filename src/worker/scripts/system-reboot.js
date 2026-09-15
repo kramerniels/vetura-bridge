@@ -2,7 +2,7 @@ const { z } = require("zod");
 const { readStdin } = require("./lib/read-stdin");
 const { runSudoHelper } = require("./lib/run-sudo-helper");
 
-const HELPER_PATH = "/usr/local/sbin/dkgm-agent-system-reboot";
+const HELPER_PATH = "/usr/local/sbin/vetura-agent-system-reboot";
 const timeoutMs = 15_000;
 
 const schema = z.object({}).strict();

@@ -1,6 +1,6 @@
-# DKGM Pi golden image
+# Vetura Pi golden image
 
-Build a flashable **Raspberry Pi 5** OS Lite (64-bit) image with **dkgm-agent**
+Build a flashable **Raspberry Pi 5** OS Lite (64-bit) image with **vetura-agent**
 preinstalled. This is the **only** first-install path for devices. App updates
 after pairing go over NATS (see [commands.md](../../commands.md)).
 
@@ -12,12 +12,12 @@ boot does not enable `SIGNED_BOOT`. There is no overlay filesystem.
 
 | Included | Not included (per device) |
 |----------|---------------------------|
-| Raspberry Pi OS Lite 64-bit (Trixie), Pi 5 | `/var/lib/dkgm-agent/state.json` |
+| Raspberry Pi OS Lite 64-bit (Trixie), Pi 5 | `/var/lib/vetura-agent/state.json` |
 | Node.js 20 | `credentials.creds` / NATS pairing |
-| `/opt/dkgm-agent` + systemd `dkgm-agent` enabled | LUKS passphrase (derived from OTP + CID) |
-| `/opt/dkgm-agent/.env` with `CLOUD_API_URL` / `CLOUD_FRONTEND_URL` | |
+| `/opt/vetura-agent` + systemd `vetura-agent` enabled | LUKS passphrase (derived from OTP + CID) |
+| `/opt/vetura-agent/.env` with `CLOUD_API_URL` / `CLOUD_FRONTEND_URL` | |
 | Support SSH authorized_keys (public key only) | Signing **private** key |
-| Signed `boot.img` / `boot.sig` in `/usr/lib/dkgm/secure-boot/` | |
+| Signed `boot.img` / `boot.sig` in `/usr/lib/vetura/secure-boot/` | |
 
 ## Requirements
 
@@ -34,24 +34,24 @@ works. See the [pi-gen README](https://github.com/RPi-Distro/pi-gen).
 
 ```bash
 # SSH support key (private key stays on the support laptop; never on the SD)
-ssh-keygen -t ed25519 -f ~/.ssh/dkgm-support -N ""
+ssh-keygen -t ed25519 -f ~/.ssh/vetura-support -N ""
 # Secure-boot signing key (RSA 2048). Back this up; losing it bricks signed devices.
-openssl genrsa 2048 > ./.dkgm-secure-boot.pem
-chmod 600 ./.dkgm-secure-boot.pem
+openssl genrsa 2048 > ./.vetura-secure-boot.pem
+chmod 600 ./.vetura-secure-boot.pem
 
 cd tools/image
 cp config.local.example config.local
 # Edit config.local:
 #   CLOUD_API_URL        # origin/path only, no ?query (agent appends /api/...)
 #   CLOUD_FRONTEND_URL   # origin for QR pair URL (/devices/pair?...)
-#   PUBKEY_SSH_FIRST_USER='ssh-ed25519 AAAA... support@dkgm'
+#   PUBKEY_SSH_FIRST_USER='ssh-ed25519 AAAA... support@vetura'
 #   PUBKEY_ONLY_SSH=1
-#   SECURE_BOOT_KEY='/Users/you/.dkgm-secure-boot.pem'
+#   SECURE_BOOT_KEY='/Users/you/.vetura-secure-boot.pem'
 ```
 
 `FIRST_USER_PASS` is required by pi-gen. `build.sh` replaces `change-me` with a
 random string. It is **not** a login password (`PasswordAuthentication no`).
-`PASSWORDLESS_SUDO` stays on so the key-only `dkgm` user can run sudo.
+`PASSWORDLESS_SUDO` stays on so the key-only `vetura` user can run sudo.
 
 One public key is baked into every card. If that **private** SSH key leaks, every
 device is reachable. Rotate by installing a new `authorized_keys` over SSH (or
@@ -72,10 +72,10 @@ This will:
 1. Fail if the SSH public key or signing PEM is missing
 2. Stage the product package into the pi-gen stage
 3. Clone/update [pi-gen](https://github.com/RPi-Distro/pi-gen) (`arm64` branch)
-4. Run `build-docker.sh` (Lite stages + `stage-dkgm`, including lockdown + signed `boot.img`)
+4. Run `build-docker.sh` (Lite stages + `stage-vetura`, including lockdown + signed `boot.img`)
 5. Copy artifacts to [`deploy/`](./deploy/)
 
-Output is typically `deploy/dkgm-pi-*.img.xz`. Older dated `.img.xz` files in
+Output is typically `deploy/vetura-pi-*.img.xz`. Older dated `.img.xz` files in
 `deploy/` are removed after each successful build (the work container for
 stage0–2 is still reused on `CONTINUE`). Keep history with `KEEP_OLD_IMAGES=1`.
 Full rebuild from stage0: `CLEAN=1 ./build.sh`.
@@ -92,7 +92,7 @@ Full rebuild from stage0: `CLEAN=1 ./build.sh`.
    1. OTP device key (one-time, irreversible)
    2. Initramfs LUKS-encrypts the root partition (passphrase = HMAC of OTP key + SD CID)
    3. Install signed `boot.img` / `boot.sig` on the FAT partition. The EEPROM is **not** switched to `SIGNED_BOOT` here: on Pi 5 that lock requires `rpiboot` with the customer pubkey in the EEPROM. Flashing `SIGNED_BOOT=1` without it bricks the board (Error 12) until an EEPROM recovery.
-4. When provision has finished (`/boot/firmware/dkgm-provision.done`), the portal is
+4. When provision has finished (`/boot/firmware/vetura-provision.done`), the portal is
    on port 80: `http://<pi-ip>/` or mDNS → scan QR → pair
 5. Further app updates: NATS `update` ([commands.md](../../commands.md)) — files
    live on the unlocked LUKS volume and persist.
@@ -100,7 +100,7 @@ Full rebuild from stage0: `CLEAN=1 ./build.sh`.
 Support SSH (after provision):
 
 ```bash
-ssh -i ~/.ssh/dkgm-support dkgm@<pi-ip>
+ssh -i ~/.ssh/vetura-support vetura@<pi-ip>
 ```
 
 HDMI and serial have **no login prompt**. Plymouth shows the clinic logo until the
@@ -121,7 +121,7 @@ SSH still works with your key; it is not shown on the display.
 - EEPROM `SIGNED_BOOT` without a pubkey: Raspberry Pi Imager → Misc utility images → Bootloader (Pi 5 family). Green screen = factory EEPROM.
 - **After** a real OTP fuse (`program_pubkey` via `rpiboot`): only images signed with the same RSA key will boot. Keep `secure-boot.pem` offline and backed up.
 - A fused Pi loads `boot.img` + `boot.sig` from the FAT partition before Linux. A reflash without that pair (or signed with a different PEM) stops at `Error 6` / `Error 12`. The image build puts a ≤128 MB pair on FAT.
-- A failed LUKS encrypt (power loss): reflash. Check `/var/log/dkgm-provision.log` if the system still boots unsigned.
+- A failed LUKS encrypt (power loss): reflash. Check `/var/log/vetura-provision.log` if the system still boots unsigned.
 
 ## Layout
 
@@ -132,7 +132,7 @@ tools/image/
   config                 # shared pi-gen defaults
   config.local.example   # secrets / SSH pubkey / signing key path
   scripts/rpi-eeprom-digest
-  stage-dkgm/            # Lite + dkgm-agent + lockdown + signed boot.img
+  stage-vetura/            # Lite + vetura-agent + lockdown + signed boot.img
   .pi-gen/               # gitignored clone
   deploy/                # gitignored build output
 ```
@@ -141,4 +141,4 @@ tools/image/
 
 - `tools/` is never part of OTA release zips; only the image build uses this tree.
 - Runtime helpers and the systemd unit live under repo `packaging/` and are
-  copied into `/opt/dkgm-agent` during the image build (and later OTA).
+  copied into `/opt/vetura-agent` during the image build (and later OTA).

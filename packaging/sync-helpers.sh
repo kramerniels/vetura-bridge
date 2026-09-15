@@ -3,13 +3,13 @@
 # Runs as root via systemd ExecStartPre=+… before the portal starts.
 set -eu
 
-APP_DIR="/opt/dkgm-agent"
+APP_DIR="/opt/vetura-agent"
 HELPERS_SRC="${APP_DIR}/packaging/helpers"
-SUDOERS_SRC="${APP_DIR}/packaging/sudoers-dkgm-agent"
-UNIT_SRC="${APP_DIR}/packaging/dkgm-agent.service"
+SUDOERS_SRC="${APP_DIR}/packaging/sudoers-vetura-agent"
+UNIT_SRC="${APP_DIR}/packaging/vetura-agent.service"
 SBIN_DIR="/usr/local/sbin"
-SUDOERS_DST="/etc/sudoers.d/dkgm-agent"
-UNIT_DST="/etc/systemd/system/dkgm-agent.service"
+SUDOERS_DST="/etc/sudoers.d/vetura-agent"
+UNIT_DST="/etc/systemd/system/vetura-agent.service"
 
 if [ "$(id -u)" -ne 0 ]; then
     echo "sync-helpers.sh must run as root" >&2

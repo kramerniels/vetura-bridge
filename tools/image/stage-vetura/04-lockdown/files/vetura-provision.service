@@ -1,0 +1,15 @@
+[Unit]
+Description=Vetura first-boot LUKS and signed-boot provision
+DefaultDependencies=no
+After=local-fs.target rpi-resize.service
+Before=vetura-agent.service
+ConditionPathExists=!/boot/firmware/vetura-provision.done
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/vetura/vetura-provision
+TimeoutStartSec=120
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

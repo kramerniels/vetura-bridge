@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Vetura
+Description=Vetura appliance boot splash
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/vetura
+ScriptFile=/usr/share/plymouth/themes/vetura/vetura.script

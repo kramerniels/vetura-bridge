@@ -1,8 +1,8 @@
-# dkgm-agent
+# vetura-agent
 
-Raspberry Pi app for DKGM: LAN portal (setup / status) plus a NATS JetStream
-worker for remote commands. This repository **is** the `dkgm-agent` package
-(installed to `/opt/dkgm-agent` on the device). Local-only helpers live under
+Raspberry Pi app for Vetura: LAN portal (setup / status) plus a NATS JetStream
+worker for remote commands. This repository **is** the `vetura-agent` package
+(installed to `/opt/vetura-agent` on the device). Local-only helpers live under
 `tools/`.
 
 | Doc | Audience |
@@ -37,7 +37,7 @@ LUKS + signed boot, then QR pairing). App updates after pairing go over NATS
 
 | State | Portal |
 |-------|--------|
-| `unpaired` | Setup page with QR / pair URL; optional manual NATS credentials |
+| `unpaired` | Setup page with QR / pair URL |
 | `paired` | Status page (deviceId, mDNS, NATS subjects, worker status) |
 
 When `paired`, the portal starts the NATS worker as a child process and keeps it
@@ -49,9 +49,9 @@ unit; the worker is not a separate unit.
 | Environment | Bind | Port |
 |-------------|------|------|
 | Linux (production) | `0.0.0.0` | `80` |
-| macOS / Windows (dev) | `0.0.0.0` | `8080` |
+| macOS / Windows (dev) | `0.0.0.0` | `8081` |
 
-Reachable via Pi IP or mDNS: `http://dkgm-<shortId>.local/`  
+Reachable via Pi IP or mDNS: `http://vetura-<shortId>.local/`  
 (`shortId` = first 8 hex chars of `deviceId`).
 
 ## Startup
@@ -63,9 +63,8 @@ Reachable via Pi IP or mDNS: `http://dkgm-<shortId>.local/`
 5. On SIGINT/SIGTERM → stop cloud loop, stop worker, close server
 
 Required env for QR pairing: `CLOUD_API_URL` and `CLOUD_FRONTEND_URL` (in
-`/opt/dkgm-agent/.env` or local `.env`). Without the API URL the cloud loop does
-not start; without the frontend URL the QR is missing. Manual setup remains
-available either way.
+`/opt/vetura-agent/.env` or local `.env`). Without the API URL the cloud loop does
+not start; without the frontend URL the QR is missing.
 
 ## Modules
 
@@ -87,7 +86,6 @@ src/portal/
 |--------|-------|---------|
 | `GET` | `/` | Setup or paired page (depends on state) |
 | `GET` | `/api/status` | JSON: state, deviceId, shortId, addresses, cloud, pairUrl, worker |
-| `POST` | `/api/manual-setup` | Temporary fallback: Scaleway `.creds` + NATS fields |
 | `GET` | `/css/*`, `/js/*` | Static assets |
 
 ### `GET /api/status`
@@ -124,15 +122,6 @@ src/portal/
 When `paired`, `worker.desired` is `true` and `worker.running` reflects the
 child process.
 
-### `POST /api/manual-setup`
-
-Only allowed when state is not `paired`. Body (JSON): `creds`, `natsUrl`, and
-optionally `stream`, `subject`, `errorSubject`, `resultSubject`, `consumer`,
-`maxAgeSec`.
-
-On success: same path as cloud bootstrap (`applyPairing` + start worker) →
-reload shows the status page.
-
 ## Cloud loop (unpaired)
 
 `cloud.js` → `startCloudLoop`:
@@ -148,7 +137,7 @@ Without `CLOUD_FRONTEND_URL`: no QR / pair URL.
 
 ## Applying pairing (`apply.js`)
 
-Shared by bootstrap and manual setup:
+Used by cloud bootstrap:
 
 1. Validate creds (must contain `-----BEGIN`) and required NATS fields
 2. Write `credentials.creds` + `.env` (mode `0600`)
@@ -169,15 +158,14 @@ Default NATS names come from `src/device-nats.js`:
 
 | | Production (Linux) | Dev (macOS/Windows) |
 |--|--------------------|---------------------|
-| Identity | `/var/lib/dkgm-agent/state.json` | `.dkgm-agent-runtime/state.json` |
-| Creds | `/opt/dkgm-agent/credentials.creds` | `.dkgm-agent-runtime/credentials.creds` |
-| Env | `/opt/dkgm-agent/.env` | `.dkgm-agent-runtime/.env` |
+| Identity | `/var/lib/vetura-agent/state.json` | `.vetura-agent-runtime/state.json` |
+| Creds | `/opt/vetura-agent/credentials.creds` | `.vetura-agent-runtime/credentials.creds` |
+| Env | `/opt/vetura-agent/.env` | `.vetura-agent-runtime/.env` |
 
 ## Frontend
 
 - **Setup** (`setup.html` + `js/setup.js`): QR, pair link, waiting text; polls
-  `/api/status` every 3s and reloads when `state === "paired"`. Manual setup
-  lives in a `<details>` block.
+  `/api/status` every 3s and reloads when `state === "paired"`.
 - **Paired** (`paired.html` + `js/paired.js`): confirmation + subjects; polls
   `/api/status` every 3s for live worker status (running / starting / error).
 
@@ -192,7 +180,7 @@ For the app itself there is **one** long-running unit: the portal.
 
 | Unit | Role |
 |------|------|
-| `dkgm-agent` | Starts the portal and keeps it running |
+| `vetura-agent` | Starts the portal and keeps it running |
 
 The portal itself starts the NATS worker when the device is paired, and restarts
 that worker if it exits. systemd does not manage the worker separately — if the
@@ -200,17 +188,17 @@ portal stops, the worker stops with it (and comes back when systemd restarts the
 portal).
 
 The recipe for that service lives in
-[`packaging/dkgm-agent.service`](./packaging/dkgm-agent.service)
+[`packaging/vetura-agent.service`](./packaging/vetura-agent.service)
 (`ExecStart` points at `src/portal/index.js`).
 
-Before the portal starts, `ExecStartPre=+/opt/dkgm-agent/packaging/sync-helpers.sh`
+Before the portal starts, `ExecStartPre=+/opt/vetura-agent/packaging/sync-helpers.sh`
 (as root) installs maintenance helpers, sudoers, and refreshes this unit from
 the package tree. See [commands.md — Maintenance helpers](./commands.md#maintenance-helpers)
 and the `update` command for OTA app updates.
 
 ### Local development
 
-No systemd needed: `npm start` (port 8080). When already paired, the portal
+No systemd needed: `npm start` (port 8081). When already paired, the portal
 starts the worker child itself.
 
 #### Pairing against the local mock
@@ -228,7 +216,7 @@ CLOUD_API_URL=http://<your-lan-ip>:3457
 CLOUD_FRONTEND_URL=http://<your-lan-ip>:3457
 ```
 
-3. From the repo root: `npm start`, open `http://localhost:8080`, complete
+3. From the repo root: `npm start`, open `http://localhost:8081`, complete
    pairing via the QR / pair URL.
 
 Production uses a real online app with the same contract; do not deploy

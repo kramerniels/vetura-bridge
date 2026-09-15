@@ -3,7 +3,6 @@ const path = require("path");
 const Mustache = require("mustache");
 const QRCode = require("qrcode");
 const { listLanAddresses } = require("./network");
-const { configFromDeviceDefaults, DEFAULTS } = require("./apply");
 const { ensureIdentity } = require("../identity");
 const { subjectsForDevice } = require("../device-nats");
 
@@ -17,7 +16,7 @@ function renderTemplate(file, data) {
 function baseData(identity) {
     return {
         deviceId: identity.deviceId,
-        mdnsHost: `dkgm-${identity.shortId}.local`,
+        mdnsHost: `vetura-${identity.shortId}.local`,
         addresses: listLanAddresses()
             .map((item) => item.address)
             .filter(Boolean)
@@ -28,17 +27,11 @@ function baseData(identity) {
 function cloudErrorFrom(ctx) {
     const cloud = ctx.cloudLoop ? ctx.cloudLoop.getStatus() : null;
     if (!cloud) return "";
-    if (!cloud.cloudConfigured) return cloud.lastError || "";
-    return cloud.lastError || "";
+    return cloud.userError || "";
 }
 
 async function renderSetupPage(ctx) {
     const identity = ensureIdentity();
-    const defaults = {
-        ...configFromDeviceDefaults(identity.deviceId),
-        natsUrl: DEFAULTS.NATS_URL,
-        maxAgeSec: DEFAULTS.NATS_MAX_AGE_SEC,
-    };
 
     let qrDataUrl = "";
     if (ctx.pairUrl) {
@@ -46,6 +39,7 @@ async function renderSetupPage(ctx) {
             margin: 1,
             width: 240,
             errorCorrectionLevel: "M",
+            color: { dark: "#022c22", light: "#ffffff" },
         });
     }
 
@@ -54,14 +48,6 @@ async function renderSetupPage(ctx) {
         pairUrl: ctx.pairUrl || "",
         qrDataUrl,
         cloudError: cloudErrorFrom(ctx),
-        creds: "",
-        natsUrl: defaults.natsUrl || "",
-        stream: defaults.stream || "commands",
-        subject: defaults.subject || "",
-        errorSubject: defaults.errorSubject || "",
-        resultSubject: defaults.resultSubject || "",
-        consumer: defaults.consumer || "",
-        maxAgeSec: String(defaults.maxAgeSec || "900"),
     });
 }
 

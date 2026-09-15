@@ -1,4 +1,0 @@
-# Install as /etc/sudoers.d/dkgm-agent (mode 0440). Validate with: visudo -cf /etc/sudoers.d/dkgm-agent
-# Allows the dkgm-agent service user to run only the fixed maintenance helpers as root.
-# Synced automatically by /opt/dkgm-agent/packaging/sync-helpers.sh on service start.
-dkgm-agent ALL=(root) NOPASSWD: /usr/local/sbin/dkgm-agent-system-update, /usr/local/sbin/dkgm-agent-system-reboot, /usr/local/sbin/dkgm-agent-app-update

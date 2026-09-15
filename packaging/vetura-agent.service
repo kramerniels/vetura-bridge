@@ -1,0 +1,33 @@
+[Unit]
+Description=Vetura agent (LAN portal + NATS worker)
+After=network.target vetura-provision.service
+Wants=network.target
+
+[Service]
+Type=simple
+User=vetura-agent
+Group=vetura-agent
+WorkingDirectory=/opt/vetura-agent
+EnvironmentFile=-/opt/vetura-agent/.env
+# + = run as root even with User=vetura-agent; syncs helpers, sudoers, and this unit
+ExecStartPre=+/opt/vetura-agent/packaging/sync-helpers.sh
+ExecStart=/usr/bin/node /opt/vetura-agent/src/portal/index.js
+Restart=on-failure
+RestartSec=5
+
+# Bind to port 80 without running as root.
+# No CapabilityBoundingSet: sudo helpers (systemUpdate/systemReboot/update) need
+# a full root capability set. AmbientCapabilities still grants port 80 to vetura-agent.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+# NoNewPrivileges and ProtectSystem are intentionally unset so the vetura-agent user
+# can run /usr/local/sbin/vetura-agent-* helpers via sudoers.
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/vetura-agent /var/lib/vetura-agent
+
+# Kill portal and its worker child together
+KillMode=control-group
+
+[Install]
+WantedBy=multi-user.target

@@ -1,11 +1,11 @@
-# pi-gen config for the DKGM Pi golden image (Raspberry Pi OS Lite 64-bit).
+# pi-gen config for the Vetura Pi golden image (Raspberry Pi OS Lite 64-bit).
 # Override secrets and CLOUD_* URLs in config.local (see config.local.example).
 
-IMG_NAME='dkgm-pi'
-PI_GEN_RELEASE='DKGM Pi'
+IMG_NAME='vetura-pi'
+PI_GEN_RELEASE='Vetura Pi'
 RELEASE='trixie'
 
-TARGET_HOSTNAME='dkgm'
+TARGET_HOSTNAME='vetura'
 LOCALE_DEFAULT='en_US.UTF-8'
 KEYBOARD_KEYMAP='us'
 KEYBOARD_LAYOUT='English (US)'
@@ -15,7 +15,7 @@ ENABLE_SSH=1
 ENABLE_CLOUD_INIT=0
 # SSH is pubkey-only. Set PUBKEY_SSH_FIRST_USER and PUBKEY_ONLY_SSH=1 in config.local.
 # FIRST_USER_PASS is required by pi-gen but is not used for login (build.sh randomises it).
-FIRST_USER_NAME='dkgm'
+FIRST_USER_NAME='vetura'
 DISABLE_FIRST_BOOT_USER_RENAME=1
 PASSWORDLESS_SUDO=1
 
@@ -25,9 +25,9 @@ WPA_COUNTRY='NL'
 DEPLOY_COMPRESSION='xz'
 COMPRESSION_LEVEL=6
 
-# Cloud URLs baked into /opt/dkgm-agent/.env (override in config.local)
+# Cloud URLs baked into /opt/vetura-agent/.env (override in config.local)
 export CLOUD_API_URL='https://api.example.com'
 export CLOUD_FRONTEND_URL='https://app.example.com'
 
-# Lite base (stage0–2) + DKGM stage; desktop stages skipped by build.sh
-STAGE_LIST='stage0 stage1 stage2 stage-dkgm'
+# Lite base (stage0–2) + Vetura stage; desktop stages skipped by build.sh
+STAGE_LIST='stage0 stage1 stage2 stage-vetura'

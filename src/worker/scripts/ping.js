@@ -26,7 +26,7 @@ function packageVersion() {
 }
 
 function installDir() {
-    if (fs.existsSync("/opt/dkgm-agent")) return "/opt/dkgm-agent";
+    if (fs.existsSync("/opt/vetura-agent")) return "/opt/vetura-agent";
     return process.cwd();
 }
 

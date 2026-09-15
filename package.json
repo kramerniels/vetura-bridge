@@ -1,7 +1,7 @@
 {
-    "name": "dkgm-agent",
+    "name": "vetura-agent",
     "version": "2.0.0",
-    "description": "DKGM device agent: LAN portal (setup / status) plus a NATS JetStream worker",
+    "description": "Vetura device agent: LAN portal (setup / status) plus a NATS JetStream worker",
     "main": "src/portal/index.js",
     "scripts": {
         "start": "node src/portal/index.js"

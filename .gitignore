@@ -3,6 +3,7 @@ node_modules/
 *.creds
 credentials.creds
 *.log
+.vetura-agent-runtime/
 .dkgm-agent-runtime/
 .DS_Store
 
@@ -12,5 +13,5 @@ tools/image/deploy/
 tools/image/.config.merged
 tools/image/config.local
 tools/image/*.pem
-tools/image/stage-dkgm/02-dkgm-agent/files/*
-!tools/image/stage-dkgm/02-dkgm-agent/files/.gitkeep
+tools/image/stage-vetura/02-vetura-agent/files/*
+!tools/image/stage-vetura/02-vetura-agent/files/.gitkeep

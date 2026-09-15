@@ -12,7 +12,7 @@ command subjects and payloads: [commands.md](./commands.md).
 |------|---------|
 | `deviceId` | UUID v4 generated on first boot, stable for the device lifetime |
 | `claimSecret` | High-entropy secret generated with the device; proves possession during bootstrap |
-| `shortId` | First 8 hex chars of `deviceId` (no dashes); used in mDNS `dkgm-<shortId>.local` |
+| `shortId` | First 8 hex chars of `deviceId` (no dashes); used in mDNS `vetura-<shortId>.local` |
 
 Credentials created in Scaleway MNQ give **full access** to a NATS account.
 Create credentials inside the **tenant/clinic NATS account**, not one global
@@ -35,66 +35,61 @@ Stored in identity state as JSON. Only two values:
 
 | Status | Meaning |
 |--------|---------|
-| `unpaired` | LAN setup UI (QR / manual); poll cloud when `CLOUD_API_URL` is set |
+| `unpaired` | LAN setup UI (QR); poll cloud when `CLOUD_API_URL` is set |
 | `paired` | Portal shows status UI; NATS worker runs as a **child of the portal** |
 
 ## User flow
 
-1. Pi boots → identity on disk → systemd starts `dkgm-agent` (portal)
+1. Pi boots → identity on disk → systemd starts `vetura-agent` (portal)
 2. If unpaired and `CLOUD_API_URL` is set → register with cloud → show QR + pair URL
 3. User opens `{CLOUD_FRONTEND_URL}/devices/pair?deviceId=...&claim=...` (via QR)
 4. User logs in on the **online** app and confirms pairing to their tenant
 5. Online app enqueues a provisioning job (Scaleway NATS credentials + JetStream consumer)
 6. Browser shows a waiting state (“Bezig met aanmaken van certificaten…”) and polls device status until `paired` or `failed`
 7. Pi polls bootstrap; when credentials are available it writes creds + `.env`, marks local state `paired`, **starts the NATS worker child**, and stops cloud polling
-8. Portal **stays up** as the paired status page (`http://<pi-ip>/` or `http://dkgm-<shortId>.local/`), including live worker status
-
-Manual fallback (temporary): paste Scaleway `.creds` on the LAN setup page
-(`POST /api/manual-setup`) — same apply path, then worker start.
+8. Portal **stays up** as the paired status page (`http://<pi-ip>/` or `http://vetura-<shortId>.local/`), including live worker status
 
 ## Pi process model
 
-One long-running systemd unit: **`dkgm-agent`**
-([`packaging/dkgm-agent.service`](./packaging/dkgm-agent.service)).
+One long-running systemd unit: **`vetura-agent`**
+([`packaging/vetura-agent.service`](./packaging/vetura-agent.service)).
 
 - Starts `src/portal/index.js` and restarts it on failure
 - When local state is `paired`, the portal spawns `src/worker/main.js`
   as a child and restarts it with backoff if it exits
-- Stopping `dkgm-agent` stops the portal **and** the worker child
+- Stopping `vetura-agent` stops the portal **and** the worker child
 
 There is no separate worker unit. Full systemd / module detail:
 [README.md](./README.md).
 
 Required env for QR pairing: `CLOUD_API_URL` and `CLOUD_FRONTEND_URL` (in
-`/opt/dkgm-agent/.env` or the process environment). Without the API URL the
-cloud loop does not start; without the frontend URL there is no QR. Manual
-setup remains available either way.
+`/opt/vetura-agent/.env` or the process environment). Without the API URL the
+cloud loop does not start; without the frontend URL there is no QR.
 
 ## Pi on-disk layout
 
 | Path (production) | Purpose |
 |-------------------|---------|
-| `/var/lib/dkgm-agent/state.json` | Identity: `{ deviceId, claimSecret, state }` |
-| `/opt/dkgm-agent/credentials.creds` | NATS credentials after pairing |
-| `/opt/dkgm-agent/.env` | NATS config for the worker (+ optional `CLOUD_API_URL` / `CLOUD_FRONTEND_URL`) |
+| `/var/lib/vetura-agent/state.json` | Identity: `{ deviceId, claimSecret, state }` |
+| `/opt/vetura-agent/credentials.creds` | NATS credentials after pairing |
+| `/opt/vetura-agent/.env` | NATS config for the worker (+ optional `CLOUD_API_URL` / `CLOUD_FRONTEND_URL`) |
 
 Local development (macOS / Windows):
 
 | Path | Purpose |
 |------|---------|
-| `.dkgm-agent-runtime/state.json` | Identity state |
-| `.dkgm-agent-runtime/credentials.creds` | Creds |
-| `.dkgm-agent-runtime/.env` | Generated NATS config |
+| `.vetura-agent-runtime/state.json` | Identity state |
+| `.vetura-agent-runtime/credentials.creds` | Creds |
+| `.vetura-agent-runtime/.env` | Generated NATS config |
 
 ## LAN portal (Pi)
 
-Listens on `0.0.0.0:80` (Linux) or `:8080` (local dev). Entry: `npm start`.
+Listens on `0.0.0.0:80` (Linux) or `:8081` (local dev). Entry: `npm start`.
 
 | Method | Path | Purpose |
 |--------|------|---------|
 | `GET` | `/` | Setup page (QR) or paired status page |
 | `GET` | `/api/status` | `{ state, deviceId, shortId, addresses, cloud, pairUrl, worker }` |
-| `POST` | `/api/manual-setup` | JSON body with Scaleway creds + optional NATS fields |
 
 - Setup page polls `/api/status` every 3s and reloads when `state` becomes `paired`
 - Paired page polls `/api/status` every 3s for worker status (`desired`, `running`, `pid`, `restarts`, `lastError`, …)
@@ -233,12 +228,12 @@ from `deviceId` (and accepts optional overrides if present):
 
 No dedicated reset script in the repo yet. On the device (as root), roughly:
 
-1. `systemctl stop dkgm-agent` (stops portal + worker child)
-2. Remove `/opt/dkgm-agent/credentials.creds`
-3. Wipe and recreate `/var/lib/dkgm-agent` (new identity on next portal start)
-4. `systemctl start dkgm-agent`
+1. `systemctl stop vetura-agent` (stops portal + worker child)
+2. Remove `/opt/vetura-agent/credentials.creds`
+3. Wipe and recreate `/var/lib/vetura-agent` (new identity on next portal start)
+4. `systemctl start vetura-agent`
 
-Note: `/opt/dkgm-agent/.env` need not be wiped (e.g. `CLOUD_API_URL` / `CLOUD_FRONTEND_URL` can remain).
+Note: `/opt/vetura-agent/.env` need not be wiped (e.g. `CLOUD_API_URL` / `CLOUD_FRONTEND_URL` can remain).
 New pairing overwrites NATS keys when bootstrap succeeds.
 
 ## Security checklist

@@ -1,0 +1,7 @@
+#!/bin/sh
+# Start X on tty1 (firmware framebuffer) and the portal kiosk session.
+set -eu
+export DISPLAY=:0
+export HOME="${HOME:-/var/lib/vetura-hdmi}"
+cd "${HOME}"
+exec /usr/bin/xinit /usr/lib/vetura/kiosk-session -- :0 vt1 -nolisten tcp -keeptty

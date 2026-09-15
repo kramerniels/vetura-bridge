@@ -1,0 +1,4 @@
+# Install as /etc/sudoers.d/vetura-agent (mode 0440). Validate with: visudo -cf /etc/sudoers.d/vetura-agent
+# Allows the vetura-agent service user to run only the fixed maintenance helpers as root.
+# Synced automatically by /opt/vetura-agent/packaging/sync-helpers.sh on service start.
+vetura-agent ALL=(root) NOPASSWD: /usr/local/sbin/vetura-agent-system-update, /usr/local/sbin/vetura-agent-system-reboot, /usr/local/sbin/vetura-agent-app-update

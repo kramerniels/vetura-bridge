@@ -1,0 +1,292 @@
+#!/bin/sh
+# Encrypt root in-place (first boot) or open LUKS (later boots).
+# Runs in initramfs local-premount, so / is not mounted yet.
+PREREQ=""
+prereqs() { echo "${PREREQ}"; }
+case "${1:-}" in
+	prereqs)
+		prereqs
+		exit 0
+		;;
+esac
+
+. /scripts/functions
+
+BOOT_MP=/run/vetura-boot
+PENDING="${BOOT_MP}/vetura-encrypt-pending"
+KEYSCRIPT=/usr/lib/vetura/luks-key
+MAPPER=cryptroot
+
+find_boot_dev() {
+	for cand in /dev/disk/by-label/bootfs /dev/mmcblk0p1 /dev/mmcblk1p1; do
+		if [ -b "${cand}" ] || [ -e "${cand}" ]; then
+			echo "${cand}"
+			return 0
+		fi
+	done
+	return 1
+}
+
+is_mounted() {
+	# util-linux mountpoint is not in the initramfs; /proc/mounts is.
+	grep -q " $1 " /proc/mounts 2>/dev/null
+}
+
+mount_boot() {
+	mkdir -p "${BOOT_MP}"
+	if is_mounted "${BOOT_MP}"; then
+		return 0
+	fi
+	bootdev=$(find_boot_dev) || return 1
+	mount -t vfat -o rw "${bootdev}" "${BOOT_MP}" 2>/dev/null \
+		|| mount -o rw "${bootdev}" "${BOOT_MP}"
+}
+
+wait_block() {
+	_path="$1"
+	_n=0
+	while [ "${_n}" -lt 30 ]; do
+		if [ -b "${_path}" ]; then
+			return 0
+		fi
+		sleep 1
+		_n=$((_n + 1))
+	done
+	return 1
+}
+
+resolve_spec() {
+	spec="$1"
+	case "${spec}" in
+		"" | /dev/mapper/*) return 1 ;;
+		PARTUUID=* | UUID=* | LABEL=*)
+			dev=$(blkid -t "${spec}" -o device 2>/dev/null || true)
+			[ -n "${dev}" ] && echo "${dev}" && return 0
+			;;
+		/dev/*)
+			echo "${spec}"
+			return 0
+			;;
+	esac
+	return 1
+}
+
+root_spec_from_cmdline() {
+	for tok in $(cat /proc/cmdline); do
+		case "${tok}" in
+			root=*)
+				echo "${tok#root=}"
+				return 0
+				;;
+		esac
+	done
+	return 1
+}
+
+# Underlying partition to encrypt (ext4), not the mapper.
+resolve_plain_root() {
+	if spec=$(root_spec_from_cmdline); then
+		if dev=$(resolve_spec "${spec}"); then
+			echo "${dev}"
+			return 0
+		fi
+	fi
+	for cand in /dev/mmcblk0p2 /dev/mmcblk1p2; do
+		if [ -b "${cand}" ]; then
+			echo "${cand}"
+			return 0
+		fi
+	done
+	return 1
+}
+
+# Underlying LUKS partition after first-boot encrypt.
+# root= is rewritten to /dev/mapper/cryptroot, so never blkid that path.
+find_luks_src() {
+	if [ -f "${BOOT_MP}/vetura-luks-dev" ]; then
+		src=$(tr -d ' \n' <"${BOOT_MP}/vetura-luks-dev")
+		if [ -n "${src}" ] && wait_block "${src}"; then
+			echo "${src}"
+			return 0
+		fi
+	fi
+	for tok in $(cat /proc/cmdline); do
+		case "${tok}" in
+			cryptdevice=*)
+				spec=${tok#cryptdevice=}
+				spec=${spec%%:*}
+				if dev=$(resolve_spec "${spec}"); then
+					echo "${dev}"
+					return 0
+				fi
+				;;
+		esac
+	done
+	dev=$(blkid -t TYPE=crypto_LUKS -o device 2>/dev/null | head -n 1 || true)
+	if [ -n "${dev}" ]; then
+		echo "${dev}"
+		return 0
+	fi
+	for cand in /dev/mmcblk0p2 /dev/mmcblk1p2; do
+		if [ -b "${cand}" ]; then
+			type=$(blkid -o value -s TYPE "${cand}" 2>/dev/null || true)
+			if [ "${type}" = "crypto_LUKS" ]; then
+				echo "${cand}"
+				return 0
+			fi
+		fi
+	done
+	return 1
+}
+
+say() {
+	_msg="vetura-crypt: $*"
+	echo "${_msg}" >>"${BOOT_MP}/vetura-crypt.log" 2>/dev/null || true
+	if command -v plymouth >/dev/null 2>&1 && plymouth --ping 2>/dev/null; then
+		plymouth display-message --text="$*" 2>/dev/null || true
+	else
+		echo "${_msg}" >/dev/console 2>/dev/null || echo "${_msg}"
+	fi
+}
+
+# Show the panic on a raw console; Plymouth would hide it.
+vetura_fail() {
+	_msg="$*"
+	echo "vetura-crypt: ${_msg}" >>"${BOOT_MP}/vetura-crypt.log" 2>/dev/null || true
+	if command -v plymouth >/dev/null 2>&1; then
+		plymouth display-message --text="${_msg}" 2>/dev/null || true
+		sleep 2
+		plymouth quit 2>/dev/null || true
+	fi
+	panic "${_msg}"
+}
+
+run_keyscript() {
+	if command -v timeout >/dev/null 2>&1; then
+		timeout 60 "${KEYSCRIPT}"
+	else
+		"${KEYSCRIPT}"
+	fi
+}
+
+load_crypt_modules() {
+	for m in dm_mod dm_crypt xts aes_generic aes_ce_cipher aes_ce_blk sha256; do
+		modprobe "${m}" 2>/dev/null || true
+	done
+}
+
+ensure_fw_crypto() {
+	mkdir -p /tmp
+	modprobe vcio 2>/dev/null || true
+	n=0
+	while [ "${n}" -lt 20 ]; do
+		if [ -e /dev/vcio_crypto ] || [ -e /dev/vcio ]; then
+			return 0
+		fi
+		sleep 1
+		n=$((n + 1))
+	done
+	vetura_fail "vetura-crypt: /dev/vcio missing (firmware mailbox); cannot derive LUKS key"
+}
+
+open_luks() {
+	dev="$1"
+	say "Schijf ontgrendelen"
+	if [ ! -x "${KEYSCRIPT}" ]; then
+		vetura_fail "vetura-crypt: missing ${KEYSCRIPT}"
+	fi
+	wait_block "${dev}" || vetura_fail "vetura-crypt: LUKS device ${dev} not present"
+	ensure_fw_crypto
+	pass=$(run_keyscript) || vetura_fail "vetura-crypt: passphrase derivation failed"
+	load_crypt_modules
+	printf '%s' "${pass}" | cryptsetup open "${dev}" "${MAPPER}" --key-file=- \
+		|| vetura_fail "vetura-crypt: cryptsetup open failed"
+	say "LUKS open ok"
+}
+
+encrypt_root() {
+	dev="$1"
+	say "Schijf versleutelen — niet uitschakelen"
+
+	e2fsck -f -y "${dev}" || true
+
+	# Leave 64MiB at the end of the partition for the LUKS2 header.
+	# resize2fs -f: initramfs clock is often 1970, so lastcheck < mtime
+	# even after a successful e2fsck, and resize2fs otherwise refuses.
+	blocks=$(dumpe2fs -h "${dev}" 2>/dev/null | awk '/Block count/ {print $3}')
+	bsize=$(dumpe2fs -h "${dev}" 2>/dev/null | awk '/Block size/ {print $3}')
+	if [ -z "${blocks}" ] || [ -z "${bsize}" ]; then
+		vetura_fail "vetura-crypt: cannot read ext4 size from ${dev}"
+	fi
+	bytes=$((blocks * bsize))
+	shrink_bytes=$((bytes - 64 * 1024 * 1024))
+	if [ "${shrink_bytes}" -le 1048576 ]; then
+		vetura_fail "vetura-crypt: ${dev} too small to leave LUKS header space"
+	fi
+	say "Schijf voorbereiden"
+	resize2fs -f "${dev}" $((shrink_bytes / 1024))K \
+		|| vetura_fail "vetura-crypt: resize2fs failed"
+
+	say "waiting for firmware mailbox"
+	ensure_fw_crypto
+	say "deriving LUKS passphrase"
+	pass=$(run_keyscript) || vetura_fail "vetura-crypt: passphrase derivation failed"
+	load_crypt_modules
+	# pbkdf2: LUKS2 default argon2id tries to use ~1GiB RAM and looks hung
+	# in initramfs (no progress). Passphrase is already high-entropy HMAC.
+	say "Bezig met versleutelen — niet uitschakelen"
+	printf '%s' "${pass}" | cryptsetup -v reencrypt --encrypt --type luks2 \
+		--cipher aes-xts-plain64 --key-size 256 \
+		--pbkdf pbkdf2 --hash sha256 --iter-time 500 \
+		--reduce-device-size 32M --batch-mode --progress-frequency 5 \
+		--key-file=- "${dev}" >>"${BOOT_MP}/vetura-crypt.log" 2>&1 \
+		|| vetura_fail "vetura-crypt: LUKS encrypt failed"
+	say "Klaar, herstarten…"
+
+	printf '%s' "${pass}" | cryptsetup open "${dev}" "${MAPPER}" --key-file=- \
+		|| vetura_fail "vetura-crypt: open after encrypt failed"
+
+	mkdir -p /run/vetura-root
+	mount -t ext4 "/dev/mapper/${MAPPER}" /run/vetura-root \
+		|| vetura_fail "vetura-crypt: mount after encrypt failed"
+
+	if [ -f /run/vetura-root/etc/fstab ]; then
+		sed -i -E 's|^[^#][^[:space:]]+[[:space:]]+/[[:space:]]|/dev/mapper/cryptroot / |' \
+			/run/vetura-root/etc/fstab
+	fi
+
+	umount /run/vetura-root
+	cryptsetup close "${MAPPER}" || true
+
+	printf '%s\n' "${dev}" >"${BOOT_MP}/vetura-luks-dev"
+	partuuid=$(blkid -o value -s PARTUUID "${dev}" 2>/dev/null || true)
+	cryptspec="${dev}"
+	if [ -n "${partuuid}" ]; then
+		cryptspec="PARTUUID=${partuuid}"
+	fi
+	if [ -f "${BOOT_MP}/cmdline.txt" ]; then
+		# Drop resize; point root at the mapper; remember the LUKS source.
+		sed -i -E 's/[[:space:]]*resize//g' "${BOOT_MP}/cmdline.txt"
+		sed -i -E "s|root=[^[:space:]]+|root=/dev/mapper/${MAPPER} cryptdevice=${cryptspec}:${MAPPER}|" \
+			"${BOOT_MP}/cmdline.txt"
+	fi
+
+	rm -f "${PENDING}"
+	printf '%s\n' "secure-boot" >"${BOOT_MP}/vetura-provision-next"
+	sync
+	umount "${BOOT_MP}" 2>/dev/null || true
+	reboot -f
+}
+
+mount_boot || true
+
+if [ -f "${PENDING}" ]; then
+	dev=$(resolve_plain_root) || vetura_fail "vetura-crypt: cannot find root partition to encrypt"
+	encrypt_root "${dev}"
+fi
+
+if [ ! -e "/dev/mapper/${MAPPER}" ]; then
+	if src=$(find_luks_src); then
+		open_luks "${src}"
+	fi
+fi

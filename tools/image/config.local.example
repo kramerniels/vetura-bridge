@@ -6,7 +6,7 @@ export CLOUD_FRONTEND_URL='https://your-cloud-app.example.com'
 
 # Support SSH: public key only (private key never goes on the SD card).
 # Build fails without this. One fleet key: a leak opens every device.
-PUBKEY_SSH_FIRST_USER='ssh-ed25519 AAAA... support@dkgm'
+PUBKEY_SSH_FIRST_USER='ssh-ed25519 AAAA... support@vetura'
 PUBKEY_ONLY_SSH=1
 
 # Required by pi-gen; build.sh replaces "change-me" with a random value.

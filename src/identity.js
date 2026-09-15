@@ -6,8 +6,8 @@ const STATE_UNPAIRED = "unpaired";
 const STATE_PAIRED = "paired";
 const STATE_FILE =
     process.platform === "darwin" || process.platform === "win32"
-        ? path.join(process.cwd(), ".dkgm-agent-runtime", "state.json")
-        : "/var/lib/dkgm-agent/state.json";
+        ? path.join(process.cwd(), ".vetura-agent-runtime", "state.json")
+        : "/var/lib/vetura-agent/state.json";
 
 function generateSecret() {
     return crypto
@@ -100,7 +100,7 @@ function main() {
             shortId: identity.shortId,
             state: identity.state,
             stateFile: identity.stateFile,
-            hostname: `dkgm-${identity.shortId}`,
+            hostname: `vetura-${identity.shortId}`,
         }),
     );
 }

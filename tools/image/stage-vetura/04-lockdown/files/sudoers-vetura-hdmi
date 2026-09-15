@@ -1,0 +1,3 @@
+# HDMI kiosk user may only drive the splash helper.
+Defaults:vetura-hdmi !requiretty
+vetura-hdmi ALL=(root) NOPASSWD: /usr/lib/vetura/hdmi-plymouth-ctl

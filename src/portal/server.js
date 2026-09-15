@@ -4,7 +4,6 @@ const path = require("path");
 const { URL } = require("url");
 const { renderSetupPage, renderPairedPage, PUBLIC_DIR } = require("./view-controller");
 const { listLanAddresses } = require("./network");
-const { applyPairing } = require("./apply");
 const { ensureIdentity, STATE_PAIRED } = require("../identity");
 
 const MIME = {
@@ -14,17 +13,8 @@ const MIME = {
     ".svg": "image/svg+xml",
     ".png": "image/png",
     ".ico": "image/x-icon",
+    ".woff2": "font/woff2",
 };
-
-// TODO Remove when manual setup is removed
-function readBody(req) {
-    return new Promise((resolve, reject) => {
-        const chunks = [];
-        req.on("data", (chunk) => chunks.push(chunk));
-        req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
-        req.on("error", reject);
-    });
-}
 
 // Write an HTTP response: strings as HTML, other values as JSON.
 function send(res, status, body, headers = {}) {
@@ -54,7 +44,12 @@ function safePublicPath(urlPath) {
 
 function serveStaticFiles(req, res, pathname) {
     if (req.method !== "GET" && req.method !== "HEAD") return false;
-    if (!pathname.startsWith("/css/") && !pathname.startsWith("/js/"))
+    if (
+        !pathname.startsWith("/css/") &&
+        !pathname.startsWith("/js/") &&
+        !pathname.startsWith("/fonts/") &&
+        pathname !== "/logo.png"
+    )
         return false;
 
     const filePath = safePublicPath(pathname.slice(1));
@@ -106,33 +101,6 @@ async function getIndex(res, ctx) {
     return send(res, 200, html);
 }
 
-// TODO remove readBody as well
-async function postManualSetup(res, req, ctx) {
-    const identity = ensureIdentity();
-    if (identity.state === "paired") {
-        return send(res, 409, { ok: false, error: "Already paired" });
-    }
-
-    const form = JSON.parse((await readBody(req)) || "{}");
-    const result = applyPairing({
-        credsFileContents: form.creds,
-        natsUrl: form.natsUrl,
-        stream: form.stream,
-        subject: form.subject,
-        errorSubject: form.errorSubject,
-        resultSubject: form.resultSubject,
-        consumer: form.consumer,
-        maxAgeSec: form.maxAgeSec,
-    });
-
-    if (!result.ok) {
-        return send(res, 400, { ok: false, errors: result.errors });
-    }
-
-    if (ctx.onPaired) ctx.onPaired(result);
-    return send(res, 200, { ok: true, config: result.config });
-}
-
 function createSetupServer(ctx) {
     const server = http.createServer(async (req, res) => {
         try {
@@ -153,11 +121,6 @@ function createSetupServer(ctx) {
                 (url.pathname === "/" || url.pathname === "/index.html")
             ) {
                 return await getIndex(res, ctx);
-            }
-
-            // TODO remove when manual setup is removed
-            if (req.method === "POST" && url.pathname === "/api/manual-setup") {
-                return await postManualSetup(res, req, ctx);
             }
 
             send(res, 404, { error: "Not found" });
