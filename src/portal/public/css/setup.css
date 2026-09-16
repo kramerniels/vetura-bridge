@@ -194,8 +194,16 @@ h1 {
 }
 
 .status.warn {
-    background: var(--bg-muted);
+    display: block;
+    margin: 1rem 0 0.25rem;
+    padding: 0;
+    background: none;
+    border-radius: 0;
     color: var(--ink);
+    font-family: "IBM Plex Serif", Georgia, serif;
+    font-size: 1.15rem;
+    font-weight: 500;
+    line-height: 1.3;
 }
 
 .wait {
@@ -242,6 +250,12 @@ h1 {
 .btn:hover {
     background: #000;
     color: #fff;
+}
+
+.page-paired .card,
+.page-paired .meta,
+.page-paired .lede {
+    text-align: left;
 }
 
 #worker-detail {

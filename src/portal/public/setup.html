@@ -42,8 +42,8 @@
             </section>
             <p class="meta">
                 Apparaat <code>{{deviceId}}</code><br />
-                {{#mdnsHost}}Adres <code>{{mdnsHost}}</code>{{/mdnsHost}}{{^mdnsHost}}LAN{{/mdnsHost}}{{#addresses}}
-                · {{addresses}}{{/addresses}}
+                {{#mdnsHost}}Adres <code>{{mdnsHost}}</code><br />{{/mdnsHost}}
+                {{#addresses}}LAN <code>{{addresses}}</code>{{/addresses}}
             </p>
         </main>
         <script src="/js/setup.js"></script>

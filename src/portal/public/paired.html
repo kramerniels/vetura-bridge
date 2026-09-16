@@ -7,7 +7,7 @@
         <title>Vetura status</title>
         <link rel="stylesheet" href="/css/setup.css" />
     </head>
-    <body>
+    <body class="page-paired">
         <main>
             <img class="brand" src="/logo.png" alt="Vetura" width="280" height="87" />
             <section class="card">
@@ -16,22 +16,17 @@
                 <p class="lede">
                     Dit apparaat ontvangt opdrachten via NATS.
                 </p>
-                <p class="facts">
-                    Consumer <code>{{consumer}}</code><br />
-                    Subject <code>{{subject}}</code><br />
-                    Errors <code>{{errorSubject}}</code><br />
-                    Results <code>{{resultSubject}}</code>
-                </p>
             </section>
             <section class="card" id="worker-section">
+                <p class="meta">
+                    Apparaat <code>{{deviceId}}</code><br />
+                    {{#mdnsHost}}Adres <code>{{mdnsHost}}</code><br />{{/mdnsHost}}
+                    {{#addresses}}LAN <code>{{addresses}}</code>{{/addresses}}
+                </p>
                 <p id="worker-status" class="status warn">Worker…</p>
                 <p id="worker-detail" class="meta"></p>
             </section>
-            <p class="meta">
-                Apparaat <code>{{deviceId}}</code><br />
-                {{#mdnsHost}}Adres <code>{{mdnsHost}}</code>{{/mdnsHost}}{{^mdnsHost}}LAN{{/mdnsHost}}{{#addresses}}
-                · {{addresses}}{{/addresses}}
-            </p>
+            
         </main>
         <script src="/js/paired.js"></script>
     </body>
