@@ -145,13 +145,29 @@ Pi's [usbboot](https://github.com/raspberrypi/usbboot) secure-boot recovery.
 2. **Flash** (needs only the bundle):
 
    ```bash
-   # Pi 4 Model B: write a recovery card, boot the Pi from it once.
+   # Pi 4 Model B, signed boot without the fuse (reversible): write a recovery
+   # card, boot the Pi from it once.
    ./provision-secure-boot.sh flash --board pi4 --bundle deploy/secure-boot-pi4-staging \
      --sd /Volumes/RECOVERY
+
+   # Pi 4 Model B, fuse. An SD card cannot program OTP; that takes rpiboot over
+   # USB-C, and a Pi 4 B has no rpiboot jumper. So: blank the EEPROM from a
+   # card (the Pi then enters rpiboot when its USB-C is plugged into this
+   # computer), then let rpiboot fuse and write the EEPROM in one go.
+   ./provision-secure-boot.sh flash --board pi4 --bundle deploy/secure-boot-pi4-staging \
+     --sd /Volumes/RECOVERY --erase
+   ./provision-secure-boot.sh flash --board pi4 --bundle deploy/secure-boot-pi4-staging \
+     --rpiboot --fuse --rpiboot-gpio 6
 
    # Pi 5: hold the power button while plugging USB-C into this computer.
    ./provision-secure-boot.sh flash --board pi5 --bundle deploy/secure-boot-pi5-staging --fuse
    ```
+
+   `rpiboot` needs a USB-C **data** cable to the Pi and the tool itself: on
+   Windows install `rpiboot_setup.exe` from the
+   [usbboot releases](https://github.com/raspberrypi/usbboot/releases) (it
+   brings the driver); on Linux/macOS the script builds it from usbboot
+   (needs `libusb-1.0` dev headers and `pkg-config`).
 
 `--fuse` writes the hash of the signing key into the chip (`program_pubkey=1`).
 It is **irreversible**, asks for a typed confirmation, and from then on the
@@ -159,15 +175,16 @@ board only ever boots images signed with that key.
 
 | | Pi 4 Model B | Pi 5 |
 |--|--------------|------|
-| Transport | Recovery SD card (no rpiboot jumper) | `rpiboot` over USB-C |
+| Transport | Recovery SD card for the EEPROM; `rpiboot` over USB-C for OTP (after `--erase`, since there is no rpiboot jumper) | `rpiboot` over USB-C |
 | Without `--fuse` | Works: the EEPROM enforces signed boot. Reversible with Raspberry Pi Imager → Bootloader, so also removable by an attacker with the board in hand | Not possible: a BCM2712 does not start a signed EEPROM without the key hash in OTP. The script refuses |
-| With `--fuse` | Permanent. Also turns off SD bootloader recovery: add `--rpiboot-gpio 6` (irreversible too) or the bootloader can never be reflashed | Permanent |
+| With `--fuse` | Permanent. Also turns off SD bootloader recovery: pass `--rpiboot-gpio 6` in the same run (irreversible too) or the bootloader can never be reflashed | Permanent |
 | Re-provision a fused board | `--rpiboot` with the fused GPIO held low | Bundle built with `--sign-recovery`, then `--already-fused` |
 
 **First Pi 4: rehearse before you fuse.** Flash the staging image, let first
 boot finish (proves LUKS + `rpi-fw-crypto` on that board), then run `flash`
 **without** `--fuse` and check it still boots (proves `boot.img` / `boot.sig`
-and the EEPROM). Only then repeat with `--fuse --rpiboot-gpio 6`. On a Pi 5,
+and the EEPROM). Only then do `--sd --erase` followed by
+`--rpiboot --fuse --rpiboot-gpio 6`. On a Pi 5,
 rehearse `boot.img` with `boot_ramdisk=1` in `config.txt` instead; there is no
 reversible EEPROM step.
 
