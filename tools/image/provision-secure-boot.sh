@@ -248,11 +248,12 @@ cmd_flash() {
 
   if [[ -n "${sd}" ]]; then
     [[ -d "${sd}" ]] || die "--sd ${sd} is not a directory"
-    if [[ -n "$(ls -A "${sd}" 2>/dev/null)" ]]; then
+    # Windows adds a hidden "System Volume Information" folder to every FAT card.
+    if [[ -n "$(ls -A "${sd}" 2>/dev/null | grep -v '^System Volume Information$')" ]]; then
       die "--sd ${sd} is not empty; use a freshly formatted FAT32 card"
     fi
     cp "${work}/"* "${sd}/"
-    sync
+    sync 2>/dev/null || true
     cat <<EOF
 Recovery card written to ${sd}. Eject it, then:
   1. Power the Pi 4 off, insert this card, power on.
