@@ -33,21 +33,40 @@ fi
 
 mkdir -p "${SBIN_DIR}"
 
+# Only replace a file when its content changed, and then atomically (temp file,
+# fsync, rename). A plain install rewrites in place without fsync; a power cut
+# right after boot left /etc/systemd/system/vetura-agent.service empty, which
+# systemd treats as masked, and the portal never came back.
+# Returns 1 when the destination was left as is.
+install_if_changed() {
+    _src="$1"
+    _dst="$2"
+    _mode="$3"
+    if cmp -s "${_src}" "${_dst}" 2>/dev/null; then
+        return 1
+    fi
+    _tmp="${_dst}.tmp.$$"
+    cp "${_src}" "${_tmp}"
+    chown root:root "${_tmp}"
+    chmod "${_mode}" "${_tmp}"
+    sync "${_tmp}"
+    mv -f "${_tmp}" "${_dst}"
+    sync
+    return 0
+}
+
 for helper in "${HELPERS_SRC}"/*; do
     [ -f "${helper}" ] || continue
     name=$(basename "${helper}")
-    install -o root -g root -m 0755 "${helper}" "${SBIN_DIR}/${name}"
+    install_if_changed "${helper}" "${SBIN_DIR}/${name}" 0755 || true
 done
 
-sudoers_tmp=$(mktemp)
-trap 'rm -f "${sudoers_tmp}"' EXIT
-cp "${SUDOERS_SRC}" "${sudoers_tmp}"
-chmod 0440 "${sudoers_tmp}"
-if ! visudo -cf "${sudoers_tmp}" >/dev/null; then
+if ! visudo -cf "${SUDOERS_SRC}" >/dev/null; then
     echo "Invalid sudoers content in ${SUDOERS_SRC}" >&2
     exit 1
 fi
-install -o root -g root -m 0440 "${sudoers_tmp}" "${SUDOERS_DST}"
+install_if_changed "${SUDOERS_SRC}" "${SUDOERS_DST}" 0440 || true
 
-install -o root -g root -m 0644 "${UNIT_SRC}" "${UNIT_DST}"
-systemctl daemon-reload
+if install_if_changed "${UNIT_SRC}" "${UNIT_DST}" 0644; then
+    systemctl daemon-reload
+fi

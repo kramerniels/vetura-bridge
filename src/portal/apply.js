@@ -100,13 +100,24 @@ function configFromBootstrap(payload, deviceId) {
     });
 }
 
+// Temp file + fsync + rename: a power cut must never leave these files empty.
+function writeFileAtomic(file, contents) {
+    const tmp = `${file}.${process.pid}.tmp`;
+    const fd = fs.openSync(tmp, "w", 0o600);
+    try {
+        fs.writeFileSync(fd, contents);
+        fs.fsyncSync(fd);
+    } finally {
+        fs.closeSync(fd);
+    }
+    fs.renameSync(tmp, file);
+}
+
 function writeFiles(config) {
     fs.mkdirSync(path.dirname(CREDS_FILE), { recursive: true });
     fs.mkdirSync(APP_DIR, { recursive: true });
-    fs.writeFileSync(CREDS_FILE, `${config.credsFileContents.trim()}\n`, {
-        mode: 0o600,
-    });
-    fs.writeFileSync(ENV_FILE, buildEnvContents(config), { mode: 0o600 });
+    writeFileAtomic(CREDS_FILE, `${config.credsFileContents.trim()}\n`);
+    writeFileAtomic(ENV_FILE, buildEnvContents(config));
 }
 
 function applyPairing(input) {

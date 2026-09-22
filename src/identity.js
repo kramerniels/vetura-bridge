@@ -56,7 +56,13 @@ function writeIdentity(identity) {
         2,
     )}\n`;
     const tmp = `${STATE_FILE}.${process.pid}.tmp`;
-    fs.writeFileSync(tmp, payload, { mode: 0o600 });
+    const fd = fs.openSync(tmp, "w", 0o600);
+    try {
+        fs.writeFileSync(fd, payload);
+        fs.fsyncSync(fd);
+    } finally {
+        fs.closeSync(fd);
+    }
     fs.renameSync(tmp, STATE_FILE);
     return validated;
 }
