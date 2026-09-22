@@ -214,7 +214,14 @@ old = '  --volume "${CONFIG_FILE}":/config:ro \\\n'
 new = '  --volume "${DIR}:/pi-gen" \\\n  --volume "${CONFIG_FILE}":/config:ro \\\n'
 if old not in text:
     sys.exit("build-docker.sh: expected config volume line not found")
-path.write_text(text.replace(old, new, 1))
+text = text.replace(old, new, 1)
+# With /pi-gen bind-mounted, deploy/ is already on the host but root-owned.
+# pi-gen's docker cp | tar over it fails for a non-root user (Linux CI).
+old_cp = '${DOCKER} cp "${CONTAINER_NAME}":/pi-gen/deploy - | tar -xf -\n'
+new_cp = '${DOCKER} run --rm --volume "${DIR}/deploy:/pi-gen/deploy" pi-gen chown -R "$(id -u):$(id -g)" /pi-gen/deploy\n'
+if old_cp not in text:
+    sys.exit("build-docker.sh: expected deploy copy line not found")
+path.write_text(text.replace(old_cp, new_cp, 1))
 PY
   fi
 }
