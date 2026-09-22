@@ -36,13 +36,26 @@ fi
 if ! grep -q 'dtoverlay=vetura-disable-v3d' "${cfg}"; then
 	printf '\ndtoverlay=vetura-disable-v3d\n' >>"${cfg}"
 fi
-# Production only: ask the bootloader to fuse the customer pubkey. On Pi 5 this
-# does not replace rpiboot; without a pubkey already in EEPROM, SIGNED_BOOT=1
-# stops at Error 12.
-if [[ "${LOCK_SIGNED_BOOT:-}" == "1" ]]; then
-	if ! grep -q '^program_pubkey=' "${cfg}"; then
-		printf '\nprogram_pubkey=1\nlock_device_private_key=1\n' >>"${cfg}"
-	fi
+# Firmware only trusts this config.txt once signed boot is enforced. Blocks the
+# raw OTP key read; hmac (LUKS passphrase) keeps working. program_pubkey does
+# not belong here: the fuse is set from the recovery config.txt
+# (provision-secure-boot.sh).
+if ! grep -q '^lock_device_private_key=' "${cfg}"; then
+	printf '\nlock_device_private_key=1\n' >>"${cfg}"
+fi
+
+# boot.img is only used once signed boot is enforced, which is after the
+# first-boot LUKS encrypt. pi-gen still has root=ROOTDEV and resize here (the
+# PARTUUID is filled in later, and only in the loose cmdline.txt).
+cmdline="${ROOTFS_DIR}/tmp/vetura-bootimg-src/cmdline.txt"
+if [[ ! -f "${cmdline}" ]]; then
+	echo "Missing cmdline.txt in ${BOOT_SRC}" >&2
+	exit 1
+fi
+sed -i -E 's/[[:space:]]+resize([[:space:]]|$)/\1/; s|root=[^[:space:]]+|root=/dev/mapper/cryptroot|' "${cmdline}"
+if ! grep -q 'root=/dev/mapper/cryptroot' "${cmdline}"; then
+	echo "Could not point boot.img cmdline.txt at the LUKS mapper" >&2
+	exit 1
 fi
 
 on_chroot << 'EOF'
@@ -65,44 +78,7 @@ chmod 0644 "${OUT}/boot.img" "${OUT}/boot.sig"
 install -m 0644 "${OUT}/boot.img" "${BOOT_SRC}/boot.img"
 install -m 0644 "${OUT}/boot.sig" "${BOOT_SRC}/boot.sig"
 
-if [[ "${LOCK_SIGNED_BOOT:-}" == "1" ]]; then
-	on_chroot << 'EOF'
-set -e
-OUT=/usr/lib/vetura/secure-boot
-pieeprom=""
-for dir in \
-	/usr/lib/firmware/raspberrypi/bootloader-2712/latest \
-	/usr/lib/firmware/raspberrypi/bootloader-2712/default \
-	/lib/firmware/raspberrypi/bootloader-2712/latest; do
-	if [ -d "${dir}" ]; then
-		pieeprom=$(ls "${dir}"/pieeprom*.bin 2>/dev/null | tail -1 || true)
-		[ -n "${pieeprom}" ] && break
-	fi
-done
-if [ -z "${pieeprom}" ] || ! command -v rpi-eeprom-config >/dev/null; then
-	echo "LOCK_SIGNED_BOOT=1 but no 2712 pieeprom / rpi-eeprom-config in rootfs" >&2
-	exit 1
-fi
-tmp=$(mktemp)
-rpi-eeprom-config "${pieeprom}" > "${tmp}"
-if grep -q '^SIGNED_BOOT=' "${tmp}"; then
-	sed -i 's/^SIGNED_BOOT=.*/SIGNED_BOOT=1/' "${tmp}"
-else
-	printf '\nSIGNED_BOOT=1\n' >> "${tmp}"
-fi
-rpi-eeprom-config --config "${tmp}" --out "${OUT}/pieeprom.bin" "${pieeprom}"
-rm -f "${tmp}"
-EOF
-	if [[ ! -f "${OUT}/pieeprom.bin" ]]; then
-		echo "LOCK_SIGNED_BOOT=1 but pieeprom.bin was not created" >&2
-		exit 1
-	fi
-	"${DIGEST}" -i "${OUT}/pieeprom.bin" -o "${OUT}/pieeprom.sig" -k "${KEY}"
-	chmod 0644 "${OUT}/pieeprom.bin" "${OUT}/pieeprom.sig"
-else
-	# Staging: never lock the EEPROM. SIGNED_BOOT=1 without a pubkey in
-	# EEPROM (rpiboot only on Pi 5) bricks the board (Error 12).
-	rm -f "${OUT}/pieeprom.bin" "${OUT}/pieeprom.sig"
-fi
+# No pieeprom in the image: the EEPROM is provisioned per device, out of band.
+rm -f "${OUT}/pieeprom.bin" "${OUT}/pieeprom.sig"
 
 rm -f "${ROOTFS_DIR}/.vetura-sb-key.pem" "${OUT}/"*.pem

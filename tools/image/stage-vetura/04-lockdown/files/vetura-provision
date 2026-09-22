@@ -14,9 +14,15 @@ log() {
 	printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" | tee -a "${LOG}"
 }
 
-is_pi5() {
+# pi5 (BCM2712) or pi4 (BCM2711, Pi 4 Model B). Anything else is unsupported.
+board() {
 	[ -f /proc/device-tree/model ] || return 1
-	tr -d '\0' </proc/device-tree/model | grep -q 'Raspberry Pi 5'
+	model=$(tr -d '\0' </proc/device-tree/model)
+	case "${model}" in
+		"Raspberry Pi 5"*) echo pi5 ;;
+		"Raspberry Pi 4 Model B"*) echo pi4 ;;
+		*) return 1 ;;
+	esac
 }
 
 root_is_luks() {
@@ -41,18 +47,15 @@ ensure_otp_key() {
 
 apply_signed_boot() {
 	if [ ! -f "${SB_DIR}/boot.img" ] || [ ! -f "${SB_DIR}/boot.sig" ]; then
-		log "No signed boot.img in ${SB_DIR}; skipping EEPROM/OTP lock"
+		log "No signed boot.img in ${SB_DIR}"
 		return 1
 	fi
 	mkdir -p /boot/firmware
 	cp -f "${SB_DIR}/boot.img" /boot/firmware/boot.img
 	cp -f "${SB_DIR}/boot.sig" /boot/firmware/boot.sig
-	# Production images ship pieeprom.bin with SIGNED_BOOT=1. Staging does not.
-	if [ -f "${SB_DIR}/pieeprom.bin" ]; then
-		log "Scheduling signed EEPROM update (production lock)"
-		rpi-eeprom-update -d -f "${SB_DIR}/pieeprom.bin" || \
-			log "rpi-eeprom-update failed; boot.img is in place"
-	fi
+	# The EEPROM is never written from here: a self-update drops the customer
+	# pubkey and the BCM2712 counter-signature. SIGNED_BOOT and the OTP fuse are
+	# set per device with tools/image/provision-secure-boot.sh.
 	return 0
 }
 
@@ -66,10 +69,11 @@ if [ -f /usr/lib/vetura/image-env ]; then
 	log "IMAGE_ENV=$(tr -d ' \n' </usr/lib/vetura/image-env)"
 fi
 
-if ! is_pi5; then
-	log "ERROR: this image is Raspberry Pi 5 only"
+if ! BOARD=$(board); then
+	log "ERROR: unsupported board (Raspberry Pi 5 or Pi 4 Model B only)"
 	exit 1
 fi
+log "Board: ${BOARD}"
 
 if [ ! -f "${NEXT}" ]; then
 	printf '%s\n' "encrypt" >"${NEXT}"

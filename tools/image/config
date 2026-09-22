@@ -28,7 +28,6 @@ COMPRESSION_LEVEL=6
 
 # staging (default) or production. CLI: IMAGE_ENV=production ./build.sh
 export IMAGE_ENV='staging'
-export LOCK_SIGNED_BOOT=0
 
 # Resolved by build.sh from STAGING_* / PRODUCTION_* in config.local
 export CLOUD_API_URL='https://api.example.com'

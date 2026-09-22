@@ -47,10 +47,12 @@ jobs:
           done
           umask 077
           printf '%s\n' "${SECURE_BOOT_KEY}" | tr -d '\r' > "${RUNNER_TEMP}/secure-boot.pem"
+          # build.sh reads STAGING_CLOUD_* or PRODUCTION_CLOUD_* depending on IMAGE_ENV.
+          prefix="$(printf '%s' "${IMAGE_ENV}" | tr '[:lower:]' '[:upper:]')"
           cat > tools/image/config.local <<EOF
           IMAGE_ENV='${IMAGE_ENV}'
-          export CLOUD_API_URL='${CLOUD_API_URL}'
-          export CLOUD_FRONTEND_URL='${CLOUD_FRONTEND_URL}'
+          ${prefix}_CLOUD_API_URL='${CLOUD_API_URL}'
+          ${prefix}_CLOUD_FRONTEND_URL='${CLOUD_FRONTEND_URL}'
           PUBKEY_SSH_FIRST_USER='${SUPPORT_SSH_PUBKEY}'
           PUBKEY_ONLY_SSH=1
           SECURE_BOOT_KEY='${RUNNER_TEMP}/secure-boot.pem'
@@ -71,6 +73,47 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           path: tools/image/deploy/*.img.xz
+          archive: false
+          if-no-files-found: error
+          retention-days: 30
+
+  # Signed bootloader EEPROM per board, for provision-secure-boot.sh flash.
+  # Holds the public key and signatures only, so it is safe as an artifact.
+  eeprom:
+    name: eeprom ${{ matrix.board }} ${{ matrix.env }}
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        env: ${{ github.ref == 'refs/heads/main' && fromJSON('["production"]') || fromJSON('["staging"]') }}
+        board: [pi4, pi5]
+    environment: ${{ matrix.env }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build signed EEPROM bundle
+        env:
+          IMAGE_ENV: ${{ matrix.env }}
+          BOARD: ${{ matrix.board }}
+          SECURE_BOOT_KEY: ${{ secrets.SECURE_BOOT_KEY }}
+        run: |
+          if [[ -z "${SECURE_BOOT_KEY}" ]]; then
+            echo "::error::SECURE_BOOT_KEY is not set on the ${IMAGE_ENV} environment"
+            exit 1
+          fi
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends python3-pycryptodome xxd binutils
+          umask 077
+          printf '%s\n' "${SECURE_BOOT_KEY}" | tr -d '\r' > "${RUNNER_TEMP}/secure-boot.pem"
+          name="secure-boot-${BOARD}-${IMAGE_ENV}-$(git rev-parse --short=7 HEAD)"
+          tools/image/provision-secure-boot.sh build --board "${BOARD}" --env "${IMAGE_ENV}" \
+            --key "${RUNNER_TEMP}/secure-boot.pem" --out "${RUNNER_TEMP}/${name}"
+          rm -f "${RUNNER_TEMP}/secure-boot.pem"
+          tar -C "${RUNNER_TEMP}" -czf "${name}.tar.gz" "${name}"
+
+      - name: Upload bundle
+        uses: actions/upload-artifact@v7
+        with:
+          path: secure-boot-*.tar.gz
           archive: false
           if-no-files-found: error
           retention-days: 30

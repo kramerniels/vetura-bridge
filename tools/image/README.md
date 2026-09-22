@@ -1,22 +1,25 @@
 # Vetura Pi golden image
 
-Build a flashable **Raspberry Pi 5** OS Lite (64-bit) image with **vetura-agent**
-preinstalled. This is the **only** first-install path for devices. App updates
+Build a flashable Raspberry Pi OS Lite (64-bit) image with **vetura-agent**
+preinstalled, for **Raspberry Pi 5** and **Raspberry Pi 4 Model B** (one image
+boots both). This is the **only** first-install path for devices. App updates
 after pairing go over NATS (see [commands.md](../../commands.md)).
 
 The image is an appliance: SSH is **pubkey-only** (your support key), HDMI/serial
 have no login, HDMI shows a Plymouth splash then a Chromium kiosk of the local
 portal, and root is **LUKS** bound to this Pi + this SD card. Signed
-`boot.img` / `boot.sig` are always baked in. A **staging** image does not lock
-the EEPROM; a **production** image enables `SIGNED_BOOT` on first boot. There
-is no overlay filesystem.
+`boot.img` / `boot.sig` are always baked in. The image itself **never** writes
+the bootloader EEPROM or the signed-boot OTP fuse: a board is locked to a
+signing key per device, out of band, with
+[`provision-secure-boot.sh`](#lock-a-device-signed-boot). There is no overlay
+filesystem.
 
 There is one image per environment (`staging`, `production`), each signed with
 its own key. CI builds them on push (see [CI](#ci)).
 
 | Included | Not included (per device) |
 |----------|---------------------------|
-| Raspberry Pi OS Lite 64-bit (Trixie), Pi 5 | `/var/lib/vetura-agent/state.json` |
+| Raspberry Pi OS Lite 64-bit (Trixie), Pi 5 + Pi 4 B | `/var/lib/vetura-agent/state.json` |
 | Node.js 20 | `credentials.creds` / NATS pairing |
 | `/opt/vetura-agent` + systemd `vetura-agent` enabled | LUKS passphrase (derived from OTP + CID) |
 | `/opt/vetura-agent/.env` with `CLOUD_API_URL` / `CLOUD_FRONTEND_URL` | |
@@ -26,7 +29,9 @@ its own key. CI builds them on push (see [CI](#ci)).
 
 ## Requirements
 
-- Raspberry Pi **5** (OTP HMAC + signed boot). Do not flash this image on Pi 4/3.
+- Raspberry Pi **5** or Raspberry Pi **4 Model B** (OTP HMAC via `rpi-fw-crypto`
+  + signed boot). Other boards stop at first-boot provision. See
+  [Pi 4 notes](#pi-4-notes).
 - Docker (Linux or macOS; privileged containers + `binfmt` for ARM)
 - Git, OpenSSL
 - Enough disk for pi-gen work dirs (tens of GB)
@@ -84,8 +89,8 @@ openssl pkey -in secure-boot-staging.pem -pubout -out tools/image/keys/staging.p
 
 ## Build
 
-`IMAGE_ENV` selects cloud URLs and whether first boot locks signed boot.
-Both URL pairs live in `config.local`. The CLI overrides `config.local`.
+`IMAGE_ENV` selects the cloud URLs and the signing key. Both URL pairs live in
+`config.local`. The CLI overrides `config.local`.
 
 ```bash
 cd tools/image
@@ -96,77 +101,106 @@ IMAGE_ENV=production ./build.sh    # production
 This will:
 
 1. Resolve `CLOUD_API_URL` / `CLOUD_FRONTEND_URL` from `IMAGE_ENV`
-2. Fail if the SSH public key or signing PEM is missing
+2. Fail if the SSH public key or signing PEM is missing, or the PEM is not the
+   private key of `keys/<IMAGE_ENV>.pub.pem`
 3. Stage the product package into the pi-gen stage
 4. Clone/update [pi-gen](https://github.com/RPi-Distro/pi-gen) (`arm64` branch)
 5. Run `build-docker.sh` (Lite stages + `stage-vetura`, including lockdown + signed `boot.img`)
 6. Copy artifacts to [`deploy/`](./deploy/)
 
-Output is typically `deploy/image_*-vetura-pi-staging-lite.img.xz` or
-`…-vetura-pi-production-lite.img.xz`. Older dated `.img.xz` files in `deploy/`
-are removed after each successful build (the work container for stage0–2 is
-still reused on `CONTINUE`). Keep history with `KEEP_OLD_IMAGES=1`.
-Full rebuild from stage0: `CLEAN=1 ./build.sh`.
+Output is `deploy/vetura-bridge-<env>-<sha>.img.xz`, e.g.
+`vetura-bridge-staging-cecbae2.img.xz`. The sha gets a `-dirty` suffix when
+tracked files have uncommitted changes. Older images in `deploy/` are removed
+after each successful build (the work container for stage0–2 is still reused on
+`CONTINUE`). Keep history with `KEEP_OLD_IMAGES=1`. Full rebuild from stage0:
+`CLEAN=1 ./build.sh`.
 
-### Staging (`IMAGE_ENV=staging`)
+Either image is safe to flash on any supported Pi as often as you need. First
+boot LUKS-encrypts root (bound to this Pi + this SD) and programs the OTP
+*device* key. That key is irreversible but does **not** block reflash. Nothing
+in the image locks the board.
 
-Default. Use this while iterating. You can flash the same Pi as often as you
-need. First boot does **not** enable `SIGNED_BOOT`.
+## Lock a device (signed boot)
 
-```bash
-cd tools/image
-./build.sh
-```
+Until a board is locked it boots the loose files on the FAT partition, so
+anyone with a card reader can change them. Locking makes the bootloader load
+only `boot.img`, and only when `boot.sig` was made with your signing key.
 
-Bakes `STAGING_CLOUD_API_URL` / `STAGING_CLOUD_FRONTEND_URL` into
-`/opt/vetura-agent/.env`. First boot still LUKS-encrypts root (bound to this
-Pi + this SD) and may program the OTP device key. That key is irreversible but
-does **not** block reflash.
+This is a per-device step, done **before** the board goes to a customer, with
+[`provision-secure-boot.sh`](./provision-secure-boot.sh). It wraps Raspberry
+Pi's [usbboot](https://github.com/raspberrypi/usbboot) secure-boot recovery.
 
-Signed `boot.img` / `boot.sig` are already in the image as preparation. The
-EEPROM stays unlocked.
+1. **Bundle** (needs the private key): a bootloader EEPROM with
+   `SIGNED_BOOT=1`, the config signed with your key, and your public key
+   embedded. CI builds it from the GitHub secret (see [CI](#ci)); download
+   `secure-boot-<board>-<env>-<sha>.tar.gz` and unpack it. Or locally:
 
-### Production (`IMAGE_ENV=production`)
+   ```bash
+   ./provision-secure-boot.sh build --board pi4 --env staging \
+     --key ~/.vetura-bridge/secure-boot-staging.pem
+   ```
 
-Bakes production cloud URLs **and** locks the board on first boot: provision
-installs `boot.img` / `boot.sig` and flashes a pieeprom with `SIGNED_BOOT=1`.
+   The bundle holds no secrets (public key and signatures only).
 
-```bash
-cd tools/image
-IMAGE_ENV=production ./build.sh
-```
+2. **Flash** (needs only the bundle):
 
-1. Choose **one** RSA 2048 PEM (`SECURE_BOOT_KEY`) and back it up offline.
-   After OTP fuse you cannot switch keys.
-2. Set `PRODUCTION_CLOUD_API_URL` / `PRODUCTION_CLOUD_FRONTEND_URL` in
-   `config.local`.
-3. On Pi 5, program the customer public key into the EEPROM with `rpiboot` /
-   `rpi-sb-provisioner` **before** flashing this image. `program_pubkey=1`
-   inside `boot.img` does not fuse the key on Pi 5.
-4. Flash and boot. First boot enables `SIGNED_BOOT`. After that, only images
-   signed with the same PEM boot.
+   ```bash
+   # Pi 4 Model B: write a recovery card, boot the Pi from it once.
+   ./provision-secure-boot.sh flash --board pi4 --bundle deploy/secure-boot-pi4-staging \
+     --sd /Volumes/RECOVERY
 
-Flashing a production image **without** that pubkey stops at Error 12. Recover
-with Raspberry Pi Imager → Misc utility images → Bootloader (Pi 5 family)
-**unless** OTP is already fused. Do not use a production image on a debug Pi.
+   # Pi 5: hold the power button while plugging USB-C into this computer.
+   ./provision-secure-boot.sh flash --board pi5 --bundle deploy/secure-boot-pi5-staging --fuse
+   ```
+
+`--fuse` writes the hash of the signing key into the chip (`program_pubkey=1`).
+It is **irreversible**, asks for a typed confirmation, and from then on the
+board only ever boots images signed with that key.
+
+| | Pi 4 Model B | Pi 5 |
+|--|--------------|------|
+| Transport | Recovery SD card (no rpiboot jumper) | `rpiboot` over USB-C |
+| Without `--fuse` | Works: the EEPROM enforces signed boot. Reversible with Raspberry Pi Imager → Bootloader, so also removable by an attacker with the board in hand | Not possible: a BCM2712 does not start a signed EEPROM without the key hash in OTP. The script refuses |
+| With `--fuse` | Permanent. Also turns off SD bootloader recovery: add `--rpiboot-gpio 6` (irreversible too) or the bootloader can never be reflashed | Permanent |
+| Re-provision a fused board | `--rpiboot` with the fused GPIO held low | Bundle built with `--sign-recovery`, then `--already-fused` |
+
+**First Pi 4: rehearse before you fuse.** Flash the staging image, let first
+boot finish (proves LUKS + `rpi-fw-crypto` on that board), then run `flash`
+**without** `--fuse` and check it still boots (proves `boot.img` / `boot.sig`
+and the EEPROM). Only then repeat with `--fuse --rpiboot-gpio 6`. On a Pi 5,
+rehearse `boot.img` with `boot_ramdisk=1` in `config.txt` instead; there is no
+reversible EEPROM step.
+
+Lock **after** first boot has finished. `boot.img` expects the encrypted root
+(`root=/dev/mapper/cryptroot`), which exists only after the first-boot encrypt.
+
+A locked board ignores the loose files, so a kernel or firmware update over
+`apt` has no effect until a new signed image is flashed.
 
 ## CI
 
-[`.github/workflows/image.yml`](../../.github/workflows/image.yml) runs `build.sh`
-on GitHub's arm64 runners when app or image files change:
+[`.github/workflows/image.yml`](../../.github/workflows/image.yml) runs when app
+or image files change:
 
-- push to `main`: `production` image
-- push to any other branch (e.g. `development`): `staging` image
+- push to `main`: `production`
+- push to any other branch (e.g. `development`): `staging`
 
-Each image is uploaded as a workflow artifact named `vetura-bridge-<env>-<sha>.img.xz`
-and kept for 30 days. This repository is public, so anyone signed in to GitHub can
-download them. The signing and SSH private keys are never part of the image.
+Per run it uploads, kept for 30 days:
+
+| Artifact | Made by |
+|----------|---------|
+| `vetura-bridge-<env>-<sha>.img.xz` | `build.sh` on GitHub's arm64 runners |
+| `secure-boot-pi4-<env>-<sha>.tar.gz`, `secure-boot-pi5-<env>-<sha>.tar.gz` | `provision-secure-boot.sh build` (signed EEPROM bundle per board) |
+
+This repository is public, so anyone signed in to GitHub can download them. The
+signing and SSH private keys are never part of an image or a bundle.
 
 Each GitHub environment (**Settings → Environments** → `staging` / `production`) needs:
 
 | Name | Kind | Value |
 |------|------|-------|
-| `CLOUD_BASE_URL` | variable | Online app URL of that environment |
+| `CLOUD_API_URL` | variable | Cloud API origin of that environment |
+| `CLOUD_FRONTEND_URL` | variable | Cloud frontend origin of that environment (QR pair link) |
 | `SUPPORT_SSH_PUBKEY` | variable | Support SSH public key (`ssh-ed25519 AAAA...`) |
 | `SECURE_BOOT_KEY` | secret | Private signing PEM of that environment |
 
@@ -176,7 +210,7 @@ tags**), so no other branch can use its key.
 ## Flash and first boot
 
 1. Write the image to an SD card (Raspberry Pi Imager, Etcher, `dd`)
-2. Boot a **Pi 5** on **Ethernet** (no Wi‑Fi SSID is baked in). HDMI has **no
+2. Boot a **Pi 5** or **Pi 4 Model B** on **Ethernet** (no Wi‑Fi SSID is baked in). HDMI has **no
    login**. A branded Plymouth splash covers boot (including LUKS); kernel/OK
    lines stay hidden. Afterwards HDMI is a Chromium kiosk of the local portal
    (QR). You can still open `http://<ip>/` from another device. Support SSH is
@@ -184,10 +218,8 @@ tags**), so no other branch can use its key.
 3. First boot takes **several extra minutes** and **reboots more than once**:
    1. OTP device key (one-time, irreversible)
    2. Initramfs LUKS-encrypts the root partition (passphrase = HMAC of OTP key + SD CID)
-   3. Install signed `boot.img` / `boot.sig` on the FAT partition. Staging
-      leaves the EEPROM unlocked. Production schedules a pieeprom update with
-      `SIGNED_BOOT=1` (needs the customer pubkey already in EEPROM via
-      `rpiboot`; otherwise Error 12).
+   3. Install signed `boot.img` / `boot.sig` on the FAT partition. The EEPROM
+      is left alone; see [Lock a device](#lock-a-device-signed-boot).
 4. When provision has finished (`/boot/firmware/vetura-provision.done`), the portal is
    on port 80: `http://<pi-ip>/` or mDNS → scan QR → pair
 5. Further app updates: NATS `update` ([commands.md](../../commands.md)) — files
@@ -209,14 +241,14 @@ SSH still works with your key; it is not shown on the display.
 |--------|--------|
 | Mount the FAT boot partition | Visible (firmware, `boot.img`). Cannot forge a valid `boot.sig` without your signing key. |
 | Mount root on a PC | LUKS; no files without this Pi's OTP key |
-| Put a tweaked boot back in **this** Pi | Staging: boots. Production (after first-boot lock): signed boot refuses it |
+| Put a tweaked boot back in **this** Pi | Unlocked board: boots. Locked board: signed boot refuses it |
 | SSH without your private key | Denied |
 
 ## Recovery
 
-- EEPROM `SIGNED_BOOT` without a pubkey: Raspberry Pi Imager → Misc utility images → Bootloader (Pi 5 family). Green screen = factory EEPROM.
-- **After** a real OTP fuse (`program_pubkey` via `rpiboot`): only images signed with the same RSA key will boot. Keep `secure-boot.pem` offline and backed up.
-- A fused Pi loads `boot.img` + `boot.sig` from the FAT partition before Linux. A reflash without that pair (or signed with a different PEM) stops at `Error 6` / `Error 12`. The image build puts a ≤128 MB pair on FAT.
+- Locked but **not fused** (Pi 4 only): Raspberry Pi Imager → Misc utility images → Bootloader (Pi 4 family) restores the factory EEPROM. Green screen = done.
+- **Fused** (`--fuse`): only images signed with the same RSA key will ever boot. Keep both private signing keys offline and backed up. The bootloader can then only be reflashed over `rpiboot` (Pi 4: needs the fused `--rpiboot-gpio`; Pi 5: a bundle built with `--sign-recovery`).
+- A locked Pi loads `boot.img` + `boot.sig` from the FAT partition before Linux. A reflash without that pair (or signed with a different PEM) stops at `Error 6` / `Error 12`. The image build puts a ≤128 MB pair on FAT.
 - A failed LUKS encrypt (power loss): reflash. Check `/var/log/vetura-provision.log` if the system still boots unsigned.
 
 ## Layout
@@ -225,6 +257,7 @@ SSH still works with your key; it is not shown on the display.
 tools/image/
   README.md
   build.sh
+  provision-secure-boot.sh  # per-device signed-boot lock (EEPROM bundle + flash)
   config                 # shared pi-gen defaults
   config.local.example   # IMAGE_ENV, cloud URLs, SSH pubkey, signing key path
   keys/                  # public secure-boot keys (staging, production)
@@ -233,6 +266,18 @@ tools/image/
   .pi-gen/               # gitignored clone
   deploy/                # gitignored build output
 ```
+
+## Pi 4 notes
+
+- Only the **Pi 4 Model B** is accepted (Pi 400 / CM4 stop at provision).
+- First-boot encryption is slower: the BCM2711 has no AES instructions, so
+  `aes-xts` runs in software. Expect a longer first boot and lower disk
+  throughput than on a Pi 5.
+- The Chromium kiosk runs on the firmware framebuffer without GPU. Prefer 4 GB
+  boards; 2 GB is tight with Chromium.
+- If `rpi-fw-crypto` cannot derive a key on a board, provision stops **before**
+  anything is encrypted (`/var/log/vetura-provision.log`); the card stays
+  reflashable.
 
 ## Notes
 

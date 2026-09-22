@@ -20,6 +20,6 @@ PUBKEY_ONLY_SSH=1
 # Not a login password — PasswordAuthentication is disabled.
 FIRST_USER_PASS='change-me'
 
-# RSA 2048 private key of IMAGE_ENV, used to sign boot.img (and pieeprom on production).
+# RSA 2048 private key of IMAGE_ENV, used to sign boot.img (and the EEPROM bundle: provision-secure-boot.sh).
 # Keep it outside the repo and backed up offline; never commit it or copy it into the image.
 SECURE_BOOT_KEY='/absolute/path/to/secure-boot-staging.pem'

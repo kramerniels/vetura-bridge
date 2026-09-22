@@ -55,7 +55,6 @@ esac
 if [[ "${IMAGE_ENV}" == "production" ]]; then
   CLOUD_API_URL="${PRODUCTION_CLOUD_API_URL:-}"
   CLOUD_FRONTEND_URL="${PRODUCTION_CLOUD_FRONTEND_URL:-}"
-  LOCK_SIGNED_BOOT=1
   if [[ -z "${CLOUD_API_URL}" || -z "${CLOUD_FRONTEND_URL}" ]]; then
     echo "Production requires PRODUCTION_CLOUD_API_URL and PRODUCTION_CLOUD_FRONTEND_URL in config.local." >&2
     exit 1
@@ -63,7 +62,6 @@ if [[ "${IMAGE_ENV}" == "production" ]]; then
 else
   CLOUD_API_URL="${STAGING_CLOUD_API_URL:-${CLOUD_API_URL:-}}"
   CLOUD_FRONTEND_URL="${STAGING_CLOUD_FRONTEND_URL:-${CLOUD_FRONTEND_URL:-}}"
-  LOCK_SIGNED_BOOT=0
 fi
 
 if [[ -z "${CLOUD_API_URL:-}" ]]; then
@@ -78,12 +76,7 @@ fi
 echo "==> IMAGE_ENV=${IMAGE_ENV}"
 echo "    CLOUD_API_URL=${CLOUD_API_URL}"
 echo "    CLOUD_FRONTEND_URL=${CLOUD_FRONTEND_URL}"
-if [[ "${LOCK_SIGNED_BOOT}" == "1" ]]; then
-  echo "    Signed-boot lock ON (first boot writes SIGNED_BOOT=1 to EEPROM)"
-  echo "    Pi 5: program the customer pubkey with rpiboot before flashing, or the board stops at Error 12."
-else
-  echo "    Signed-boot lock OFF (safe to reflash)"
-fi
+echo "    The image never writes the EEPROM; lock a device with provision-secure-boot.sh."
 
 if [[ -z "${PUBKEY_SSH_FIRST_USER:-}" ]]; then
   echo "PUBKEY_SSH_FIRST_USER is required in config.local (support SSH public key)." >&2
@@ -190,7 +183,6 @@ echo "==> Merging config + config.local into pi-gen"
   echo "PUBKEY_ONLY_SSH=1"
   printf "FIRST_USER_PASS=%q\n" "${FIRST_USER_PASS}"
   printf "export IMAGE_ENV=%q\n" "${IMAGE_ENV}"
-  printf "export LOCK_SIGNED_BOOT=%q\n" "${LOCK_SIGNED_BOOT}"
   printf "export CLOUD_API_URL=%q\n" "${CLOUD_API_URL}"
   printf "export CLOUD_FRONTEND_URL=%q\n" "${CLOUD_FRONTEND_URL}"
   printf "IMG_NAME=%q\nIMG_FILENAME=%q\nARCHIVE_FILENAME=%q\n" "${IMG_NAME}" "${IMG_NAME}" "${IMG_NAME}"
@@ -228,21 +220,18 @@ PY
 }
 vetura_patch_pigen_docker
 
-# Keep only the newest flash artifact (dated image_*.img.xz pile up otherwise).
+# Keep only the newest flash artifact (one .img.xz per commit piles up otherwise).
 # KEEP_OLD_IMAGES=1 skips this.
 vetura_prune_old_flash_images() {
   local dir="$1"
   [[ "${KEEP_OLD_IMAGES:-}" == "1" ]] && return 0
   [[ -d "${dir}" ]] || return 0
-  local newest stem datepart
-  newest="$(ls -t "${dir}"/image_*.img.xz 2>/dev/null | head -1 || true)"
+  local newest stem
+  newest="$(ls -t "${dir}"/*.img.xz 2>/dev/null | head -1 || true)"
   [[ -n "${newest}" ]] || return 0
   stem="$(basename "${newest}" .img.xz)"
-  datepart="${stem#image_}"
-  find "${dir}" -maxdepth 1 -type f \( -name 'image_*.img.xz' -o -name 'image_*.img' \) \
-    ! -name "$(basename "${newest}")" -print -delete
-  find "${dir}" -maxdepth 1 -type f -name '*.info' \
-    ! -name "${datepart}.info" -print -delete
+  find "${dir}" -maxdepth 1 -type f \( -name '*.img.xz' -o -name '*.img' -o -name '*.info' \) \
+    ! -name "${stem}.img.xz" ! -name "${stem}.info" -print -delete
 }
 
 mkdir -p "${OUT_DIR}"

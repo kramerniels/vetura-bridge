@@ -16,5 +16,8 @@ tools/image/.pi-gen/
 tools/image/deploy/
 tools/image/.config.merged
 tools/image/config.local
+# provision-secure-boot.sh: usbboot clone and per-device records
+tools/image/.usbboot/
+tools/image/provisioned/
 tools/image/stage-vetura/02-vetura-agent/files/*
 !tools/image/stage-vetura/02-vetura-agent/files/.gitkeep
