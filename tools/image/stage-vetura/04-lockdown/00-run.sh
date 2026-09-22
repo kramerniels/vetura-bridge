@@ -29,6 +29,8 @@ install -m 0440 files/sudoers-vetura-hdmi "${ROOTFS_DIR}/etc/sudoers.d/vetura-hd
 install -d -m 0755 "${ROOTFS_DIR}/usr/share/plymouth/themes/vetura"
 install -m 0644 files/plymouth/vetura.plymouth "${ROOTFS_DIR}/usr/share/plymouth/themes/vetura/vetura.plymouth"
 install -m 0644 files/plymouth/vetura.script "${ROOTFS_DIR}/usr/share/plymouth/themes/vetura/vetura.script"
+install -m 0644 files/plymouth/bar-bg.png "${ROOTFS_DIR}/usr/share/plymouth/themes/vetura/bar-bg.png"
+install -m 0644 files/plymouth/bar-fg.png "${ROOTFS_DIR}/usr/share/plymouth/themes/vetura/bar-fg.png"
 install -d -m 0755 "${ROOTFS_DIR}/etc/plymouth"
 install -m 0644 files/plymouth/plymouthd.conf "${ROOTFS_DIR}/etc/plymouth/plymouthd.conf"
 install -d -m 0755 "${ROOTFS_DIR}/etc/initramfs-tools/conf.d"

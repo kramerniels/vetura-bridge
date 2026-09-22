@@ -217,7 +217,10 @@ tags**), so no other branch can use its key.
    not shown on the display.
 3. First boot takes **several extra minutes** and **reboots more than once**:
    1. OTP device key (one-time, irreversible)
-   2. Initramfs LUKS-encrypts the root partition (passphrase = HMAC of OTP key + SD CID)
+   2. Initramfs LUKS-encrypts the root partition (passphrase = HMAC of OTP key
+      + SD CID). The splash shows a progress bar with percentage and an ETA.
+      It covers the whole card, so on a Pi 4 (no AES hardware) a 32 GB card
+      takes about an hour; a Pi 5 needs a few minutes.
    3. Install signed `boot.img` / `boot.sig` on the FAT partition. The EEPROM
       is left alone; see [Lock a device](#lock-a-device-signed-boot).
 4. When provision has finished (`/boot/firmware/vetura-provision.done`), the portal is

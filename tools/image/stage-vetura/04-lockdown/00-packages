@@ -13,6 +13,7 @@ python3-pil
 fonts-dejavu-core
 curl
 plymouth
+plymouth-label
 xserver-xorg-core
 xserver-xorg-video-fbdev
 xserver-xorg-legacy

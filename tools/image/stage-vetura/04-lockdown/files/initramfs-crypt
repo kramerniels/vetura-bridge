@@ -139,6 +139,11 @@ find_luks_src() {
 	return 1
 }
 
+# Log only. The splash renders display-message text, so keep it for users.
+note() {
+	echo "vetura-crypt: $*" >>"${BOOT_MP}/vetura-crypt.log" 2>/dev/null || true
+}
+
 say() {
 	_msg="vetura-crypt: $*"
 	echo "${_msg}" >>"${BOOT_MP}/vetura-crypt.log" 2>/dev/null || true
@@ -147,6 +152,49 @@ say() {
 	else
 		echo "${_msg}" >/dev/console 2>/dev/null || echo "${_msg}"
 	fi
+}
+
+hush() {
+	if command -v plymouth >/dev/null 2>&1 && plymouth --ping 2>/dev/null; then
+		plymouth hide-message --text="$*" 2>/dev/null || true
+	fi
+}
+
+# Feed cryptsetup --progress-json lines to the splash while it runs.
+# Cosmetic only: never affects the encrypt or its exit status.
+show_encrypt_progress() {
+	_file="$1"
+	_pid="$2"
+	_last_pct=""
+	_last_msg=""
+	while kill -0 "${_pid}" 2>/dev/null; do
+		_line=$(grep '^{"device"' "${_file}" 2>/dev/null | tail -n 1)
+		if [ -n "${_line}" ]; then
+			_done=$(printf '%s' "${_line}" | sed -n 's/.*"device_bytes":"\([0-9]*\)".*/\1/p')
+			_size=$(printf '%s' "${_line}" | sed -n 's/.*"device_size":"\([0-9]*\)".*/\1/p')
+			_eta=$(printf '%s' "${_line}" | sed -n 's/.*"eta_ms":"\([0-9]*\)".*/\1/p')
+			if [ -n "${_done}" ] && [ -n "${_size}" ] && [ "${_size}" -gt 0 ] 2>/dev/null; then
+				_pct=$(( _done / 1024 * 100 / (_size / 1024) ))
+				if [ "${_pct}" != "${_last_pct}" ] && command -v plymouth >/dev/null 2>&1; then
+					plymouth system-update --progress="${_pct}" 2>/dev/null || true
+					_last_pct="${_pct}"
+				fi
+				_mins=$(( (${_eta:-0} + 59999) / 60000 ))
+				if [ "${_pct}" -ge 100 ]; then
+					_msg="Schijf versleutelen: afronden. Niet uitschakelen."
+				elif [ "${_mins}" -gt 0 ]; then
+					_msg="Schijf versleutelen: ${_pct}%, nog ongeveer ${_mins} min. Niet uitschakelen."
+				else
+					_msg="Schijf versleutelen: ${_pct}%. Niet uitschakelen."
+				fi
+				if [ "${_msg}" != "${_last_msg}" ]; then
+					say "${_msg}"
+					_last_msg="${_msg}"
+				fi
+			fi
+		fi
+		sleep 2
+	done
 }
 
 # Show the panic on a raw console; Plymouth would hide it.
@@ -201,12 +249,13 @@ open_luks() {
 	load_crypt_modules
 	printf '%s' "${pass}" | cryptsetup open "${dev}" "${MAPPER}" --key-file=- \
 		|| vetura_fail "vetura-crypt: cryptsetup open failed"
-	say "LUKS open ok"
+	note "LUKS open ok"
+	hush "Schijf ontgrendelen"
 }
 
 encrypt_root() {
 	dev="$1"
-	say "Schijf versleutelen — niet uitschakelen"
+	say "Schijf controleren. Niet uitschakelen."
 
 	e2fsck -f -y "${dev}" || true
 
@@ -223,25 +272,41 @@ encrypt_root() {
 	if [ "${shrink_bytes}" -le 1048576 ]; then
 		vetura_fail "vetura-crypt: ${dev} too small to leave LUKS header space"
 	fi
-	say "Schijf voorbereiden"
+	say "Schijf voorbereiden. Niet uitschakelen."
 	resize2fs -f "${dev}" $((shrink_bytes / 1024))K \
 		|| vetura_fail "vetura-crypt: resize2fs failed"
 
-	say "waiting for firmware mailbox"
+	note "waiting for firmware mailbox"
 	ensure_fw_crypto
-	say "deriving LUKS passphrase"
+	note "deriving LUKS passphrase"
 	pass=$(run_keyscript) || vetura_fail "vetura-crypt: passphrase derivation failed"
 	load_crypt_modules
 	# pbkdf2: LUKS2 default argon2id tries to use ~1GiB RAM and looks hung
 	# in initramfs (no progress). Passphrase is already high-entropy HMAC.
-	say "Bezig met versleutelen — niet uitschakelen"
-	printf '%s' "${pass}" | cryptsetup -v reencrypt --encrypt --type luks2 \
+	say "Schijf versleutelen: starten. Niet uitschakelen."
+	# Key via a tmpfs file so cryptsetup can run in the background while the
+	# splash follows its JSON progress; a piped key would tie stdin to it.
+	keyfile=/run/vetura-luks-pass
+	progress=/run/vetura-encrypt-progress
+	(umask 077 && printf '%s' "${pass}" >"${keyfile}") \
+		|| vetura_fail "vetura-crypt: cannot write key file"
+	: >"${progress}"
+	cryptsetup -v reencrypt --encrypt --type luks2 \
 		--cipher aes-xts-plain64 --key-size 256 \
 		--pbkdf pbkdf2 --hash sha256 --iter-time 500 \
 		--reduce-device-size 32M --batch-mode --progress-frequency 5 \
-		--key-file=- "${dev}" >>"${BOOT_MP}/vetura-crypt.log" 2>&1 \
-		|| vetura_fail "vetura-crypt: LUKS encrypt failed"
-	say "Klaar, herstarten…"
+		--progress-json --key-file "${keyfile}" "${dev}" \
+		>"${progress}" 2>>"${BOOT_MP}/vetura-crypt.log" &
+	cryptpid=$!
+	show_encrypt_progress "${progress}" "${cryptpid}"
+	if ! wait "${cryptpid}"; then
+		rm -f "${keyfile}"
+		tail -n 5 "${progress}" >>"${BOOT_MP}/vetura-crypt.log" 2>/dev/null || true
+		vetura_fail "vetura-crypt: LUKS encrypt failed"
+	fi
+	rm -f "${keyfile}"
+	tail -n 1 "${progress}" >>"${BOOT_MP}/vetura-crypt.log" 2>/dev/null || true
+	say "Schijf versleuteld. Herstarten…"
 
 	printf '%s' "${pass}" | cryptsetup open "${dev}" "${MAPPER}" --key-file=- \
 		|| vetura_fail "vetura-crypt: open after encrypt failed"
