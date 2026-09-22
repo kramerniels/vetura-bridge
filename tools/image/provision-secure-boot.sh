@@ -252,6 +252,8 @@ cmd_flash() {
     if [[ -n "$(ls -A "${sd}" 2>/dev/null | grep -v '^System Volume Information$')" ]]; then
       die "--sd ${sd} is not empty; use a freshly formatted FAT32 card"
     fi
+    # recovery.bin on an SD card loads pieeprom.upd; the .bin name is for rpiboot.
+    mv "${work}/pieeprom.bin" "${work}/pieeprom.upd"
     cp "${work}/"* "${sd}/"
     sync 2>/dev/null || true
     cat <<EOF
