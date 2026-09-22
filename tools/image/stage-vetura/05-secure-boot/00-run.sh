@@ -24,6 +24,22 @@ if [[ ! -x "${DIGEST}" ]]; then
 	exit 1
 fi
 
+# boot.img is what a locked board boots. Its initramfs must be the one with
+# the LUKS unlock hook, not the stock one from the kernel package.
+on_chroot << 'EOF'
+set -e
+found=0
+for initrd in /boot/firmware/initramfs8 /boot/firmware/initramfs_2712; do
+	[ -f "${initrd}" ] || continue
+	found=1
+	if ! lsinitramfs "${initrd}" | grep -q 'scripts/local-premount/vetura-crypt'; then
+		echo "${initrd} lacks the vetura-crypt unlock script; boot.img would not open LUKS" >&2
+		exit 1
+	fi
+done
+[ "${found}" = 1 ] || { echo "no initramfs in /boot/firmware" >&2; exit 1; }
+EOF
+
 install -d -m 0755 "${OUT}"
 rm -rf "${ROOTFS_DIR}/tmp/vetura-bootimg-src"
 install -d "${ROOTFS_DIR}/tmp/vetura-bootimg-src"

@@ -51,4 +51,13 @@ if command -v plymouth-set-default-theme >/dev/null 2>&1; then
 fi
 
 # Ensure firmware crypto + cryptsetup are in every installed kernel's initramfs.
-update-initramfs -u -k all
+# -c, not -u: pi-gen sets update_initramfs=no until export-image/05-finalise,
+# which silently turns -u into a no-op. 05-secure-boot packs boot.img before
+# that, so it needs the real initramfs now.
+update-initramfs -c -k all
+for initrd in /boot/initrd.img-*; do
+	if ! lsinitramfs "${initrd}" | grep -q 'scripts/local-premount/vetura-crypt'; then
+		echo "${initrd} does not contain the vetura-crypt unlock script" >&2
+		exit 1
+	fi
+done
