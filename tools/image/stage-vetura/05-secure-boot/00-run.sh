@@ -72,11 +72,24 @@ rm -rf /tmp/vetura-bootimg-src
 EOF
 
 "${DIGEST}" -i "${OUT}/boot.img" -o "${OUT}/boot.sig" -k "${KEY}"
+# The bootloader reads the bare hash from line 1; refuse anything else.
+if ! head -n 1 "${OUT}/boot.sig" | grep -Eq '^[0-9a-f]{64}$' \
+	|| ! grep -Eq '^rsa2048: [0-9a-f]{512}$' "${OUT}/boot.sig"; then
+	echo "boot.sig is not in rpi-eeprom-digest format" >&2
+	exit 1
+fi
 chmod 0644 "${OUT}/boot.img" "${OUT}/boot.sig"
 # Fused devices load only this pair from FAT. Provision also copies it later,
 # but a reflash never reaches Linux unless it is already on the boot partition.
 install -m 0644 "${OUT}/boot.img" "${BOOT_SRC}/boot.img"
 install -m 0644 "${OUT}/boot.sig" "${BOOT_SRC}/boot.sig"
+
+# Also ship the pair next to the image: a locked board takes a new signed boot
+# by copying these two files onto its FAT partition, without a reflash.
+if [[ -n "${DEPLOY_DIR:-}" ]]; then
+	mkdir -p "${DEPLOY_DIR}"
+	tar -C "${OUT}" -czf "${DEPLOY_DIR}/${IMG_NAME}-signed-boot.tar.gz" boot.img boot.sig
+fi
 
 # No pieeprom in the image: the EEPROM is provisioned per device, out of band.
 rm -f "${OUT}/pieeprom.bin" "${OUT}/pieeprom.sig"

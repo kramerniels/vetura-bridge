@@ -190,6 +190,7 @@ Per run it uploads, kept for 30 days:
 | Artifact | Made by |
 |----------|---------|
 | `vetura-bridge-<env>-<sha>.img.xz` | `build.sh` on GitHub's arm64 runners |
+| `vetura-bridge-<env>-<sha>-signed-boot.tar.gz` | the image's `boot.img` + `boot.sig`; copy onto a locked board's FAT partition to give it a new signed boot without a reflash |
 | `secure-boot-pi4-<env>-<sha>.tar.gz`, `secure-boot-pi5-<env>-<sha>.tar.gz` | `provision-secure-boot.sh build` (signed EEPROM bundle per board) |
 
 This repository is public, so anyone signed in to GitHub can download them. The

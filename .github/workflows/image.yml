@@ -72,7 +72,9 @@ jobs:
       - name: Upload image
         uses: actions/upload-artifact@v7
         with:
-          path: tools/image/deploy/*.img.xz
+          path: |
+            tools/image/deploy/*.img.xz
+            tools/image/deploy/*-signed-boot.tar.gz
           archive: false
           if-no-files-found: error
           retention-days: 30
