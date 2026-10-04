@@ -31,11 +31,15 @@ async function runSudoHelper(helperPath, args = [], options = {}) {
         stdout = result.stdout;
         stderr = result.stderr;
     } catch (err) {
-        const message = [err.stderr, err.stdout, err.message]
+        // Not err.message: it repeats the command line, and the update
+        // helper's argument is a presigned URL.
+        const message = [err.stderr, err.stdout]
             .map((v) => (v == null ? "" : String(v).trim()))
             .filter(Boolean)
             .join("\n");
-        throw new Error(message || `${label} failed`);
+        throw new Error(
+            message || `${label} failed${err.killed ? " (timed out)" : ""}`,
+        );
     }
 
     const raw = String(stdout || "").trim();
