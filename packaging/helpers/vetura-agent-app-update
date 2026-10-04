@@ -4,6 +4,13 @@
 # Zip must include node_modules; no npm ci on device.
 set -eu
 
+# The service's sandbox (ReadWritePaths) bind-mounts /opt/vetura-agent in its
+# own mount namespace, and a mount point cannot be renamed: the swap below
+# failed with "Device or resource busy". Run in the host's namespace instead.
+if [ -z "${VETURA_HOST_NAMESPACE:-}" ] && command -v nsenter >/dev/null 2>&1; then
+    exec env VETURA_HOST_NAMESPACE=1 nsenter -t 1 -m -- "$0" "$@"
+fi
+
 URL="${1:-}"
 SHA256="${2:-}"
 APP_DIR="/opt/vetura-agent"
