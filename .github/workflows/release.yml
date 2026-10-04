@@ -1,0 +1,36 @@
+# Builds the app zip for the NATS `update` command (commands.md) and publishes
+# it as a GitHub release. Runs on a version tag: git tag v2.1.0 && git push --tags
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Build zip
+        run: |
+          version="$(node -p 'require("./package.json").version')"
+          if [[ "v${version}" != "${GITHUB_REF_NAME}" ]]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match package.json version ${version}"
+            exit 1
+          fi
+          npm ci --omit=dev
+          zip -qr "vetura-agent-${version}.zip" package.json package-lock.json src packaging node_modules
+          sha256sum "vetura-agent-${version}.zip" | tee "vetura-agent-${version}.zip.sha256"
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" vetura-agent-*.zip vetura-agent-*.zip.sha256 --generate-notes
