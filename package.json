@@ -1,6 +1,6 @@
 {
     "name": "vetura-agent",
-    "version": "2.0.0",
+    "version": "2.1.0",
     "description": "Vetura device agent: LAN portal (setup / status) plus a NATS JetStream worker",
     "main": "src/portal/index.js",
     "scripts": {

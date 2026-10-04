@@ -1,5 +1,6 @@
 const { JSONCodec } = require("nats");
 const { readIdentity } = require("../identity");
+const { packageVersion } = require("../version");
 const { buildResultPayload } = require("./errors");
 
 const codec = JSONCodec();
@@ -37,6 +38,7 @@ async function publishBeat() {
     const timestamp = new Date().toISOString();
     const payload = buildResultPayload("heartbeat", null, {
         deviceId,
+        version: packageVersion(),
         intervalSec,
         timestamp,
     });
