@@ -13,6 +13,7 @@ const scriptWhitelist = {
     systemReboot: path.join(SCRIPTS_DIR, "system-reboot.js"),
     setHeartbeatInterval: path.join(SCRIPTS_DIR, "set-heartbeat-interval.js"),
     update: path.join(SCRIPTS_DIR, "update.js"),
+    unpair: path.join(SCRIPTS_DIR, "unpair.js"),
 };
 
 function commandFromSubject(subject) {

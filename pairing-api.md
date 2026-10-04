@@ -226,15 +226,19 @@ from `deviceId` (and accepts optional overrides if present):
 
 ## Factory reset
 
-No dedicated reset script in the repo yet. On the device (as root), roughly:
+From the cloud: the NATS command `unpair` ([commands.md](./commands.md#unpair)).
+
+On the device itself (as root), for one that is offline or already revoked:
 
 1. `systemctl stop vetura-agent` (stops portal + worker child)
 2. Remove `/opt/vetura-agent/credentials.creds`
-3. Wipe and recreate `/var/lib/vetura-agent` (new identity on next portal start)
-4. `systemctl start vetura-agent`
+3. Remove `/var/lib/vetura-agent/state.json` (new identity on next portal start)
+4. Check that `/opt/vetura-agent/.env` has `CLOUD_API_URL` and
+   `CLOUD_FRONTEND_URL`. Agents before 2.2.0 dropped both lines when they
+   paired; without them the device cannot register or show a QR code.
+5. `systemctl start vetura-agent`
 
-Note: `/opt/vetura-agent/.env` need not be wiped (e.g. `CLOUD_API_URL` / `CLOUD_FRONTEND_URL` can remain).
-New pairing overwrites NATS keys when bootstrap succeeds.
+New pairing overwrites NATS keys when bootstrap succeeds and keeps the cloud URLs.
 
 ## Security checklist
 
@@ -243,8 +247,8 @@ New pairing overwrites NATS keys when bootstrap succeeds.
 - Claim secret: ≥ 32 bytes random; rate-limit register + bootstrap
 - Bootstrap payload single-use / short TTL
 - Audit who paired which device
-- Revoke: delete Scaleway credentials, mark device revoked; on device run
-  factory reset
+- Revoke: send `unpair`, then delete Scaleway credentials and mark the device
+  revoked; a device that cannot be reached is reset on the device itself
 
 ## Related
 

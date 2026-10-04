@@ -1,0 +1,27 @@
+#!/bin/sh
+# Root helper for NATS command unpair.
+# Install: synced to /usr/local/sbin/ by packaging/sync-helpers.sh.
+# Prints JSON ack first, then forgets the pairing and restarts the agent, so the
+# worker can publish results and ack NATS.
+set -eu
+
+APP_DIR="/opt/vetura-agent"
+STATE_DIR="/var/lib/vetura-agent"
+
+# The worker stages the .env of an unpaired device (cloud URLs only) first.
+if [ ! -f "${APP_DIR}/.env.unpaired" ]; then
+    echo "Missing ${APP_DIR}/.env.unpaired" >&2
+    exit 1
+fi
+
+printf '%s\n' '{"ok":true,"scheduled":true}'
+
+# Without state.json the portal makes a new identity on its next start: new
+# deviceId, new claim secret, unpaired.
+(
+    sleep 3
+    mv -f "${APP_DIR}/.env.unpaired" "${APP_DIR}/.env"
+    rm -f "${APP_DIR}/credentials.creds" "${STATE_DIR}/state.json"
+    /bin/systemctl restart vetura-agent
+) >/dev/null 2>&1 &
+exit 0

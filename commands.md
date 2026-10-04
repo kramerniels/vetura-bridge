@@ -8,7 +8,7 @@ bootstrap: [pairing-api.md](./pairing-api.md). Pi runtime and systemd:
 
 Publish to JetStream subject `commands.<deviceId>.<command>`. Commands:
 `printLabel`, `ping`, `systemUpdate`, `systemReboot`, `setHeartbeatInterval`,
-`update`.
+`update`, `unpair`.
 
 ```text
 commands.<deviceId>.printLabel
@@ -17,6 +17,7 @@ commands.<deviceId>.systemUpdate
 commands.<deviceId>.systemReboot
 commands.<deviceId>.setHeartbeatInterval
 commands.<deviceId>.update
+commands.<deviceId>.unpair
 ```
 
 ## Commands
@@ -145,7 +146,7 @@ Example success `result`:
 
 **Cloud concurrency:** while an `update` is in flight for a device, the cloud
 must **not** publish other commands to that device (`printLabel`, `ping`,
-`systemUpdate`, `systemReboot`, `setHeartbeatInterval`, another `update`, …).
+`systemUpdate`, `systemReboot`, `setHeartbeatInterval`, `unpair`, another `update`, …).
 The worker does not enforce an exclusive lock in v1. Resume other commands after
 the matching `results` / `errors` message (or a cloud-side timeout).
 
@@ -211,6 +212,33 @@ the zip.
 
 Zip layout may be flat (files at zip root) or a single top-level folder that
 contains `package.json`.
+
+### `unpair`
+
+Disconnects the device from its organisation. The device forgets its NATS
+credentials and its identity and restarts as a **new, unpaired device**: new
+`deviceId`, new claim secret, QR code on the screen. Agent 2.2.0 or later.
+
+```json
+{
+  "cloudApiUrl": "https://api.example.com",
+  "cloudFrontendUrl": "https://app.example.com"
+}
+```
+
+| Field | Rules |
+|-------|--------|
+| `cloudApiUrl`, `cloudFrontendUrl` | optional; the cloud the device registers with afterwards. Without them the device keeps the ones it has. A device that was paired by an agent before 2.2.0 no longer has them and reports an error, so send both for those |
+
+Result: `{ "ok": true, "scheduled": true }`. About 3 seconds later the device
+wipes and restarts; nothing more arrives from the old `deviceId`.
+
+**Cloud side, in this order:** publish `unpair`, wait for the result, then
+delete the device's NATS credentials and consumer and mark the device removed.
+Once the credentials are gone the device cannot receive commands, so a device
+that is offline can only be reset on the device itself
+([pairing-api.md — Factory reset](./pairing-api.md#factory-reset)). Revoke its
+credentials anyway.
 
 ## Success and failure subjects
 
@@ -316,6 +344,7 @@ The worker runs as `vetura-agent` and calls fixed root helpers via sudo (`sudo -
 | `/usr/local/sbin/vetura-agent-system-update` | `systemUpdate` |
 | `/usr/local/sbin/vetura-agent-system-reboot` | `systemReboot` |
 | `/usr/local/sbin/vetura-agent-app-update` | `update` |
+| `/usr/local/sbin/vetura-agent-unpair` | `unpair` |
 
 Helpers, sudoers, and the systemd unit are **synced automatically** on every
 portal start by:
@@ -342,7 +371,7 @@ block sudo/`apt`). `AmbientCapabilities=CAP_NET_BIND_SERVICE` remains for port
 80. Sudoers allows only:
 
 ```text
-vetura-agent ALL=(root) NOPASSWD: /usr/local/sbin/vetura-agent-system-update, /usr/local/sbin/vetura-agent-system-reboot, /usr/local/sbin/vetura-agent-app-update
+vetura-agent ALL=(root) NOPASSWD: /usr/local/sbin/vetura-agent-system-update, /usr/local/sbin/vetura-agent-system-reboot, /usr/local/sbin/vetura-agent-app-update, /usr/local/sbin/vetura-agent-unpair
 ```
 
 ## Related
