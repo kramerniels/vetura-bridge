@@ -179,9 +179,23 @@ git tag v2.1.0 && git push origin v2.1.0
 
 The tag must equal the `package.json` version. The run publishes a GitHub
 release with `vetura-agent-<version>.zip`, its `.sha256` file and generated
-notes (edit them into the changelog the cloud shows). The cloud reads
-`GET https://api.github.com/repos/<owner>/<repo>/releases/latest` and sends the
-zip's `browser_download_url` and checksum via `commands.<deviceId>.update`.
+notes, and uploads to the private Scaleway bucket `vetura-bridge-releases`
+(defined in vetura-infra, `modules/bridge-releases`):
+
+| Object | Content |
+|--------|---------|
+| `vetura-agent-<version>.zip` | the app package |
+| `vetura-agent-<version>.zip.sha256` | `sha256sum` output |
+| `latest.json` | `{ "version", "file", "sha256", "changelog", "publishedAt" }` of the newest release; `changelog` is the release notes at upload time |
+
+The cloud reads `latest.json`, presigns a GET for `file` and sends that URL
+with `sha256` via `commands.<deviceId>.update`. The presigned URL must stay
+valid for the download (a few minutes is enough).
+
+Repository secrets for the upload: `SCW_RELEASES_ACCESS_KEY`,
+`SCW_RELEASES_SECRET_KEY`, `SCW_RELEASES_BUCKET`, `SCW_RELEASES_ENDPOINT`,
+`SCW_RELEASES_REGION` (`tofu output -json bridge_release_upload_credentials`
+in vetura-infra's production stack). Without them the upload step is skipped.
 
 By hand:
 

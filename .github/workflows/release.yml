@@ -12,6 +12,9 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-24.04-arm
+    env:
+      # Empty until the secrets exist; the upload step is skipped then.
+      SCW_RELEASES_BUCKET: ${{ secrets.SCW_RELEASES_BUCKET }}
     steps:
       - uses: actions/checkout@v7
 
@@ -34,3 +37,31 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "${GITHUB_REF_NAME}" vetura-agent-*.zip vetura-agent-*.zip.sha256 --generate-notes
+
+      # The bucket is private; the cloud presigns the download for a device.
+      # Bucket and keys come from vetura-infra (modules/bridge-releases).
+      - name: Upload to Scaleway Object Storage
+        if: env.SCW_RELEASES_BUCKET != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.SCW_RELEASES_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.SCW_RELEASES_SECRET_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.SCW_RELEASES_REGION }}
+          AWS_ENDPOINT_URL: ${{ secrets.SCW_RELEASES_ENDPOINT }}
+          # Scaleway rejects the checksum trailers newer AWS CLIs send by default.
+          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+        run: |
+          command -v aws >/dev/null || sudo snap install aws-cli --classic
+          version="${GITHUB_REF_NAME#v}"
+          zip="vetura-agent-${version}.zip"
+          gh release view "${GITHUB_REF_NAME}" --json body,publishedAt > release.json
+          jq -n --arg version "${version}" --arg file "${zip}" \
+            --arg sha256 "$(cut -d' ' -f1 "${zip}.sha256")" --slurpfile release release.json \
+            '{version: $version, file: $file, sha256: $sha256, changelog: $release[0].body, publishedAt: $release[0].publishedAt}' \
+            > latest.json
+          cat latest.json
+          aws s3 cp "${zip}" "s3://${SCW_RELEASES_BUCKET}/${zip}"
+          aws s3 cp "${zip}.sha256" "s3://${SCW_RELEASES_BUCKET}/${zip}.sha256"
+          # Last, so latest.json never names a zip that is not there yet.
+          aws s3 cp latest.json "s3://${SCW_RELEASES_BUCKET}/latest.json" --content-type application/json
