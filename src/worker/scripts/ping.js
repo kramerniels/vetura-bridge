@@ -1,12 +1,12 @@
 const fs = require("fs");
 const os = require("os");
-const path = require("path");
 const { execFile } = require("child_process");
 const { promisify } = require("util");
 const { z } = require("zod");
 const { readStdin } = require("./lib/read-stdin");
 const { listLanAddresses } = require("../../portal/network");
 const { readIdentity } = require("../../identity");
+const { packageVersion } = require("../../version");
 
 const execFileAsync = promisify(execFile);
 const timeoutMs = 10_000;
@@ -14,16 +14,6 @@ const timeoutMs = 10_000;
 const schema = z.object({}).strict();
 
 const DISK_PATHS = ["/", "/opt", "/var"];
-
-function packageVersion() {
-    try {
-        const pkgPath = path.join(__dirname, "..", "..", "..", "package.json");
-        const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
-        return pkg.version || null;
-    } catch {
-        return null;
-    }
-}
 
 function installDir() {
     if (fs.existsSync("/opt/vetura-agent")) return "/opt/vetura-agent";

@@ -2,8 +2,10 @@ const net = require("net");
 const { z } = require("zod");
 const { readStdin } = require("./lib/read-stdin");
 
-// Printer connection timeout
-const CONNECT_TIMEOUT_MS = 10_000;
+// Short, so an unreachable printer fails fast instead of holding up its queue.
+const CONNECT_TIMEOUT_MS = 4_000;
+// Idle limit once connected (the printer stopped reading).
+const SEND_TIMEOUT_MS = 10_000;
 // Kill the child process if the print job hangs; null = no runner timeout.
 const timeoutMs = 40_000;
 
@@ -21,7 +23,10 @@ const schema = z
 
 function sendZpl(ip, port, zpl) {
     return new Promise((resolve, reject) => {
+        let connected = false;
         const socket = net.createConnection({ host: ip, port }, () => {
+            connected = true;
+            socket.setTimeout(SEND_TIMEOUT_MS);
             socket.write(zpl, "utf8", (err) => {
                 if (err) {
                     socket.destroy();
@@ -38,7 +43,9 @@ function sendZpl(ip, port, zpl) {
             socket.destroy();
             reject(
                 new Error(
-                    `Printer connection timed out after ${CONNECT_TIMEOUT_MS}ms (${ip}:${port})`,
+                    connected
+                        ? `Printer send timed out after ${SEND_TIMEOUT_MS}ms (${ip}:${port})`
+                        : `Printer connection timed out after ${CONNECT_TIMEOUT_MS}ms (${ip}:${port})`,
                 ),
             );
         });

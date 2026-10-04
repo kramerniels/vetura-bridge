@@ -13,11 +13,12 @@ const schema = z
             .refine((value) => value.startsWith("https://"), {
                 message: "url must use https://",
             }),
+        sha256: z.string().regex(/^[a-fA-F0-9]{64}$/, "sha256 must be 64 hex characters"),
     })
     .strict();
 
 async function run(data) {
-    return runSudoHelper(HELPER_PATH, [data.url], {
+    return runSudoHelper(HELPER_PATH, [data.url, data.sha256], {
         timeoutMs,
         maxBuffer: 1024 * 1024,
         label: "update helper",

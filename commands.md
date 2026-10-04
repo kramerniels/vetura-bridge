@@ -118,12 +118,19 @@ git on the device). Preserves `.env` and `credentials.creds`. On success schedul
 unit are re-synced on the next start (see [Maintenance helpers](#maintenance-helpers)).
 
 ```json
-{ "url": "https://example.com/releases/vetura-agent-2.1.0.zip" }
+{
+  "url": "https://example.com/releases/vetura-agent-2.1.0.zip",
+  "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+}
 ```
 
 | Field | Rules |
 |-------|--------|
 | `url` | HTTPS URL to a zip of the app package (must include `node_modules`) |
+| `sha256` | SHA-256 of that zip, 64 hex characters. The helper compares it with the download before unpacking; on a mismatch nothing is installed |
+
+Agents older than 2.1.0 reject `sha256` as an unknown field. Send them
+`{ "url": ... }` once to bring them to 2.1.0; from then on `sha256` is required.
 
 Example success `result`:
 
@@ -167,7 +174,8 @@ Example:
 ```bash
 npm ci --omit=dev
 zip -r "vetura-agent-${VERSION}.zip" package.json package-lock.json src packaging node_modules
-# Upload the artifact; cloud sends the HTTPS URL via commands.<deviceId>.update
+sha256sum "vetura-agent-${VERSION}.zip"
+# Upload the artifact; cloud sends the HTTPS URL and the checksum via commands.<deviceId>.update
 ```
 
 Fresh devices get the same product paths via the golden SD image
@@ -184,6 +192,47 @@ Subscribe to permanent failures for the device on one shared subject:
 ```text
 errors.<deviceId>
 ```
+
+Error envelope:
+
+```json
+{
+  "command": "printLabel",
+  "messageId": "42",
+  "error": "Printer connection timed out after 4000ms (192.168.1.132:9100)",
+  "attempts": 3,
+  "reason": "connect timeout",
+  "jobId": "...",
+  "printerId": "...",
+  "ip": "192.168.1.132",
+  "port": 9100,
+  "timestamp": "2026-08-07T16:00:00.000Z"
+}
+```
+
+| Field | Present |
+|-------|---------|
+| `command`, `messageId`, `error`, `attempts`, `timestamp` | always (`attempts` is the JetStream delivery count) |
+| `reason` | printer failures: `connect timeout`, `connect failed` (refused, host unreachable) or `send timeout` |
+| `jobId`, `printerId`, `ip`, `port` | `printLabel`, copied from the command body |
+
+Every command ends in exactly one message: a result or an error. The worker
+acks the command in both cases.
+
+- **Permanent failures** (validation, unknown command, script error) are
+  reported on the first delivery.
+- **Transient failures** (printer unreachable, script timeout, apt/dpkg lock)
+  are nak'd and redelivered after 2 s (30 s for an apt/dpkg lock). On the
+  **3rd** delivery the worker gives up and reports. An unreachable printer is
+  reported after about 15 s (connect timeout 4 s per attempt).
+
+A `max_deliver` on the consumer must be higher than 3; at 3 or lower the server
+drops the message before the worker reports it.
+
+Commands for **one printer** (`ip:port`) run in order. Different printers run
+side by side, so an unreachable printer does not delay jobs for another one.
+All other commands share a single queue. A retried job is redelivered behind
+newer jobs for the same printer.
 
 Subscribe to successful command results (JSON) on:
 
@@ -223,6 +272,7 @@ is no JetStream stream sequence):
   "messageId": null,
   "result": {
     "deviceId": "550e8400-e29b-41d4-a716-446655440000",
+    "version": "2.1.0",
     "intervalSec": 3600,
     "timestamp": "2026-08-07T17:00:00.000Z"
   },

@@ -5,6 +5,7 @@
 set -eu
 
 URL="${1:-}"
+SHA256="${2:-}"
 APP_DIR="/opt/vetura-agent"
 PREV_DIR="/opt/vetura-agent.previous"
 SERVICE_USER="vetura-agent"
@@ -33,6 +34,13 @@ case "${URL}" in
         ;;
 esac
 
+case "${SHA256}" in
+    "" | *[!0-9a-fA-F]*)
+        fail "SHA-256 of the zip is required (64 hex characters)"
+        ;;
+esac
+[ "${#SHA256}" -eq 64 ] || fail "SHA-256 of the zip is required (64 hex characters)"
+
 started=$(date +%s)
 work=$(mktemp -d /var/tmp/vetura-agent-update.XXXXXX)
 trap 'rm -rf "${work}"' EXIT
@@ -43,6 +51,11 @@ mkdir -p "${preserve}" "${extract_root}"
 
 curl -fsSL --proto '=https' --tlsv1.2 -o "${work}/package.zip" "${URL}" \
     || fail "Download failed"
+
+# Nothing is unpacked or installed unless the zip is the one the cloud named.
+expected=$(printf '%s' "${SHA256}" | tr 'A-F' 'a-f')
+actual=$(sha256sum "${work}/package.zip" | cut -d' ' -f1)
+[ "${actual}" = "${expected}" ]     || fail "Checksum mismatch: expected ${expected}, got ${actual}"
 
 unzip -q "${work}/package.zip" -d "${extract_root}" \
     || fail "Unzip failed"
