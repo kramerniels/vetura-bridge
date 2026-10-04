@@ -169,13 +169,26 @@ Include at least:
 
 Do **not** include `.env`, `credentials.creds`, `.git`, or `tools/` (dev-only).
 
-Example:
+CI does this on a version tag
+([`.github/workflows/release.yml`](./.github/workflows/release.yml)): bump
+`version` in `package.json`, merge, then
+
+```bash
+git tag v2.1.0 && git push origin v2.1.0
+```
+
+The tag must equal the `package.json` version. The run publishes a GitHub
+release with `vetura-agent-<version>.zip`, its `.sha256` file and generated
+notes (edit them into the changelog the cloud shows). The cloud reads
+`GET https://api.github.com/repos/<owner>/<repo>/releases/latest` and sends the
+zip's `browser_download_url` and checksum via `commands.<deviceId>.update`.
+
+By hand:
 
 ```bash
 npm ci --omit=dev
 zip -r "vetura-agent-${VERSION}.zip" package.json package-lock.json src packaging node_modules
 sha256sum "vetura-agent-${VERSION}.zip"
-# Upload the artifact; cloud sends the HTTPS URL and the checksum via commands.<deviceId>.update
 ```
 
 Fresh devices get the same product paths via the golden SD image
