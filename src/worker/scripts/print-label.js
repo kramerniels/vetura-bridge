@@ -24,6 +24,10 @@ const schema = z
 function sendZpl(ip, port, zpl) {
     return new Promise((resolve, reject) => {
         let connected = false;
+        // Once the ZPL is written the label may already be printing. A failure
+        // after that point must not read as transient (errors.js), or the
+        // worker retries and the printer gets the label a second time.
+        let written = false;
         const socket = net.createConnection({ host: ip, port }, () => {
             connected = true;
             socket.setTimeout(SEND_TIMEOUT_MS);
@@ -33,6 +37,7 @@ function sendZpl(ip, port, zpl) {
                     reject(err);
                     return;
                 }
+                written = true;
                 socket.end();
             });
         });
@@ -43,7 +48,9 @@ function sendZpl(ip, port, zpl) {
             socket.destroy();
             reject(
                 new Error(
-                    connected
+                    written
+                        ? `Label sent, but the printer did not close the connection within ${SEND_TIMEOUT_MS}ms (${ip}:${port}); not retrying`
+                        : connected
                         ? `Printer send timed out after ${SEND_TIMEOUT_MS}ms (${ip}:${port})`
                         : `Printer connection timed out after ${CONNECT_TIMEOUT_MS}ms (${ip}:${port})`,
                 ),
@@ -53,7 +60,9 @@ function sendZpl(ip, port, zpl) {
         socket.on("error", (err) => {
             reject(
                 new Error(
-                    `Printer connection failed (${ip}:${port}): ${err.message}`,
+                    written
+                        ? `Label sent, but the printer connection then failed (${ip}:${port}): ${err.message}; not retrying`
+                        : `Printer connection failed (${ip}:${port}): ${err.message}`,
                 ),
             );
         });

@@ -29,6 +29,7 @@ function errorReason(err) {
     if (message.includes("Printer connection timed out")) return "connect timeout";
     if (message.includes("Printer connection failed")) return "connect failed";
     if (message.includes("Printer send timed out")) return "send timeout";
+    if (message.includes("Label sent, but")) return "unconfirmed after send";
     return null;
 }
 

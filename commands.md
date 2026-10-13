@@ -268,15 +268,24 @@ Error envelope:
 | Field | Present |
 |-------|---------|
 | `command`, `messageId`, `error`, `attempts`, `timestamp` | always (`attempts` is the JetStream delivery count) |
-| `reason` | printer failures: `connect timeout`, `connect failed` (refused, host unreachable) or `send timeout` |
+| `reason` | printer failures: `connect timeout`, `connect failed` (refused, host unreachable), `send timeout`, or `unconfirmed after send` (the ZPL was written, then the connection timed out or failed; the label may have printed, so it is not retried) |
 | `jobId`, `printerId`, `ip`, `port` | `printLabel`, copied from the command body |
 
-Every command ends in exactly one message: a result or an error. The worker
-acks the command in both cases.
+Every command ends in at most one message: a result or an error. The worker
+acks the command in both cases, before it publishes that message; if the
+publish fails it is logged on the device and not retried, so a command is
+never run twice for the sake of its report.
+
+The worker runs each command at most once. It remembers the stream sequences
+it has handled (on disk, `/var/lib/vetura-agent/handled.json`, for twice the
+stream's max_age and at least 2 h). A redelivery of a handled command (a lost
+ack, `ack_wait` running out while the message sat in a stalled connection, a
+worker restart) is acked and skipped without a second result.
 
 - **Permanent failures** (validation, unknown command, script error) are
   reported on the first delivery.
-- **Transient failures** (printer unreachable, script timeout, apt/dpkg lock)
+- **Transient failures** (printer unreachable before any ZPL was written,
+  script timeout, apt/dpkg lock)
   are nak'd and redelivered after 2 s (30 s for an apt/dpkg lock). On the
   **3rd** delivery the worker gives up and reports. An unreachable printer is
   reported after about 15 s (connect timeout 4 s per attempt).

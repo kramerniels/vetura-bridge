@@ -15,6 +15,7 @@ const {
 const { commandFromSubject, validateRequest } = require("./commands");
 const { runScript } = require("./runner");
 const heartbeat = require("./heartbeat");
+const { createHandledStore, messageKey } = require("./handled-store");
 
 const codec = JSONCodec();
 
@@ -23,6 +24,9 @@ const codec = JSONCodec();
 const MAX_ATTEMPTS = 3;
 // Queued and running messages get their ack timer extended this often.
 const WORKING_INTERVAL_MS = 10_000;
+// Stream max_age is set by the API (1 h) and may be longer than our own
+// NATS_MAX_AGE_SEC; remember handled messages well past either.
+const MIN_HANDLED_RETENTION_SEC = 3600;
 
 async function ensureJetStream(nc, config) {
     const jsm = await nc.jetstreamManager();
@@ -114,78 +118,117 @@ function errorDetails(command, body, err, attempts) {
     return details;
 }
 
-async function handleMessage(nc, config, msg, body, decodeError) {
+async function handleMessage(nc, config, handled, msg, body, decodeError) {
     const messageId = String(msg.info.streamSequence);
+    const key = messageKey(msg);
 
+    let command;
+    let result;
     try {
         if (decodeError) throw decodeError;
         logEvent("message_received", {
             messageId,
             subject: msg.subject,
+            attempt: msg.info.deliveryCount,
             body,
         });
 
-        const { command, result } = await processCommand(
+        ({ command, result } = await processCommand(
             nc,
             config,
             body,
             msg.subject,
-        );
-        if (command === "setHeartbeatInterval") {
-            heartbeat.setIntervalSec(result.intervalSec);
-        }
+        ));
+    } catch (err) {
+        await handleFailure(nc, config, handled, msg, key, body, err);
+        return;
+    }
+
+    // The command has run (the label is on the printer). From here nothing
+    // may lead to running it again: record it, ack it, then report. A failed
+    // report is logged, never retried by redelivering the message.
+    handled.add(key);
+    msg.ack();
+
+    if (command === "setHeartbeatInterval") {
+        heartbeat.setIntervalSec(result.intervalSec);
+    }
+
+    try {
         await publishResult(
             nc,
             config,
             buildResultPayload(command, messageId, result),
         );
-        msg.ack();
         logEvent("message_success", { messageId, command });
     } catch (err) {
-        const command =
-            err.command || commandFromSubject(msg.subject) || "unknown";
-        const permanent = err.permanent || !isTransientError(err);
-        const attempts = msg.info.deliveryCount;
-        const errorMessage =
-            err.validation != null
-                ? JSON.stringify(err.validation)
-                : err.message || String(err);
+        logEvent("result_publish_failed", {
+            messageId,
+            command,
+            error: err.message || String(err),
+        });
+    }
+}
 
-        if (permanent || attempts >= MAX_ATTEMPTS) {
-            await publishError(
-                nc,
-                config,
-                buildErrorPayload(
-                    command,
-                    messageId,
-                    { message: errorMessage },
-                    errorDetails(command, body, err, attempts),
-                ),
-            );
-            msg.ack();
-            logEvent("message_failed", {
-                messageId,
+async function handleFailure(nc, config, handled, msg, key, body, err) {
+    const messageId = String(msg.info.streamSequence);
+    const command = err.command || commandFromSubject(msg.subject) || "unknown";
+    const permanent = err.permanent || !isTransientError(err);
+    const attempts = msg.info.deliveryCount;
+    const errorMessage =
+        err.validation != null
+            ? JSON.stringify(err.validation)
+            : err.message || String(err);
+
+    if (!permanent && attempts < MAX_ATTEMPTS) {
+        msg.nak(retryDelayMs(err));
+        logEvent("message_retry", {
+            messageId,
+            command,
+            permanent: false,
+            attempts,
+            error: errorMessage,
+        });
+        return;
+    }
+
+    handled.add(key);
+    msg.ack();
+    logEvent("message_failed", {
+        messageId,
+        command,
+        permanent,
+        attempts,
+        error: errorMessage,
+    });
+
+    try {
+        await publishError(
+            nc,
+            config,
+            buildErrorPayload(
                 command,
-                permanent,
-                attempts,
-                error: errorMessage,
-            });
-        } else {
-            msg.nak(retryDelayMs(err));
-            logEvent("message_retry", {
                 messageId,
-                command,
-                permanent: false,
-                attempts,
-                error: errorMessage,
-            });
-        }
+                { message: errorMessage },
+                errorDetails(command, body, err, attempts),
+            ),
+        );
+    } catch (publishErr) {
+        logEvent("error_publish_failed", {
+            messageId,
+            command,
+            error: publishErr.message || String(publishErr),
+        });
     }
 }
 
 async function startConsumer() {
     const { nc, config } = await connectNats();
     await ensureJetStream(nc, config);
+
+    const handled = createHandledStore(
+        2 * Math.max(config.maxAgeSec, MIN_HANDLED_RETENTION_SEC) * 1000,
+    );
 
     const js = nc.jetstream();
     const consumer = await js.consumers.get(config.stream, config.consumer);
@@ -209,6 +252,18 @@ async function startConsumer() {
 
     for await (const msg of messages) {
         const sequence = msg.info.streamSequence;
+        // Redelivered after it was already handled (lost ack, ack_wait ran out
+        // while it sat in a stalled connection, worker restart): running it
+        // again would print the label twice.
+        if (handled.has(messageKey(msg))) {
+            msg.ack();
+            logEvent("message_duplicate_skipped", {
+                messageId: String(sequence),
+                subject: msg.subject,
+                attempt: msg.info.deliveryCount,
+            });
+            continue;
+        }
         // Redelivered while its earlier delivery is still queued or running here.
         if (inFlight.has(sequence)) continue;
         inFlight.set(sequence, msg);
@@ -223,7 +278,7 @@ async function startConsumer() {
 
         const key = queueKey(msg.subject, body);
         const tail = (queues.get(key) || Promise.resolve())
-            .then(() => handleMessage(nc, config, msg, body, decodeError))
+            .then(() => handleMessage(nc, config, handled, msg, body, decodeError))
             .catch((err) => {
                 // Not acked: the server redelivers it after ack_wait.
                 logEvent("message_handler_error", {
